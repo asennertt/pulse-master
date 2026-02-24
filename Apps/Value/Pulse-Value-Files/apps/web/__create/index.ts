@@ -12,19 +12,20 @@ import { proxy } from 'hono/proxy';
 import { bodyLimit } from 'hono/body-limit';
 import { requestId } from 'hono/request-id';
 import { createHonoServer } from 'react-router-hono-server/node';
+import { serveStatic } from '@hono/node-server/serve-static'; // Added for production assets
 import { serializeError } from 'serialize-error';
 import ws from 'ws';
 import NeonAdapter from './adapter';
 import { getHTMLForErrorPage } from './get-html-for-error-page';
 import { isAuthAction } from './is-auth-action';
 import { API_BASENAME, api } from './route-builder';
+
 neonConfig.webSocketConstructor = ws;
 
 const als = new AsyncLocalStorage<{ requestId: string }>();
 
 for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
   const original = nodeConsole[method].bind(console);
-
   console[method] = (...args: unknown[]) => {
     const requestId = als.getStore()?.requestId;
     if (requestId) {
@@ -41,6 +42,23 @@ const pool = new Pool({
 const adapter = NeonAdapter(pool);
 
 const app = new Hono();
+
+/** * PRODUCTION STATIC ASSET HANDLING
+ * This section ensures that JavaScript and CSS files are served correctly on Railway.
+ */
+if (process.env.NODE_ENV === 'production') {
+  // Serve compiled assets from the React Router build folder
+  app.use('/assets/*', serveStatic({ root: './build/client' }));
+  app.use('/favicon.png', serveStatic({ path: './build/client/favicon.png' }));
+
+  // Intercept the hardcoded dev-overlay script and return a valid empty JS file
+  // This prevents the "Unexpected token <" (MIME type) error
+  app.get('/src/__create/dev-error-overlay.js', (c) => {
+    return c.text('console.log("Dev overlay disabled")', 200, {
+      'Content-Type': 'application/javascript',
+    });
+  });
+}
 
 app.use('*', requestId());
 
@@ -72,11 +90,12 @@ if (process.env.CORS_ORIGINS) {
     })
   );
 }
+
 for (const method of ['post', 'put', 'patch'] as const) {
   app[method](
     '*',
     bodyLimit({
-      maxSize: 4.5 * 1024 * 1024, // 4.5mb to match vercel limit
+      maxSize: 4.5 * 1024 * 1024,
       onError: (c) => {
         return c.json({ error: 'Body size limit exceeded' }, 413);
       },
@@ -94,9 +113,7 @@ if (process.env.AUTH_SECRET) {
         signOut: '/account/logout',
       },
       skipCSRFCheck,
-      session: {
-        strategy: 'jwt',
-      },
+      session: { strategy: 'jwt' },
       callbacks: {
         session({ session, token }) {
           if (token.sub) {
@@ -106,67 +123,28 @@ if (process.env.AUTH_SECRET) {
         },
       },
       cookies: {
-        csrfToken: {
-          options: {
-            secure: true,
-            sameSite: 'none',
-          },
-        },
-        sessionToken: {
-          options: {
-            secure: true,
-            sameSite: 'none',
-          },
-        },
-        callbackUrl: {
-          options: {
-            secure: true,
-            sameSite: 'none',
-          },
-        },
+        csrfToken: { options: { secure: true, sameSite: 'none' } },
+        sessionToken: { options: { secure: true, sameSite: 'none' } },
+        callbackUrl: { options: { secure: true, sameSite: 'none' } },
       },
       providers: [
         Credentials({
           id: 'credentials-signin',
           name: 'Credentials Sign in',
           credentials: {
-            email: {
-              label: 'Email',
-              type: 'email',
-            },
-            password: {
-              label: 'Password',
-              type: 'password',
-            },
+            email: { label: 'Email', type: 'email' },
+            password: { label: 'Password', type: 'password' },
           },
           authorize: async (credentials) => {
             const { email, password } = credentials;
-            if (!email || !password) {
-              return null;
-            }
-            if (typeof email !== 'string' || typeof password !== 'string') {
-              return null;
-            }
-
-            // logic to verify if user exists
+            if (!email || !password || typeof email !== 'string' || typeof password !== 'string') return null;
             const user = await adapter.getUserByEmail(email);
-            if (!user) {
-              return null;
-            }
-            const matchingAccount = user.accounts.find(
-              (account) => account.provider === 'credentials'
-            );
+            if (!user) return null;
+            const matchingAccount = user.accounts.find((a) => a.provider === 'credentials');
             const accountPassword = matchingAccount?.password;
-            if (!accountPassword) {
-              return null;
-            }
-
+            if (!accountPassword) return null;
             const isValid = await verify(accountPassword, password);
-            if (!isValid) {
-              return null;
-            }
-
-            // return user object with the their profile data
+            if (!isValid) return null;
             return user;
           },
         }),
@@ -174,27 +152,14 @@ if (process.env.AUTH_SECRET) {
           id: 'credentials-signup',
           name: 'Credentials Sign up',
           credentials: {
-            email: {
-              label: 'Email',
-              type: 'email',
-            },
-            password: {
-              label: 'Password',
-              type: 'password',
-            },
+            email: { label: 'Email', type: 'email' },
+            password: { label: 'Password', type: 'password' },
             name: { label: 'Name', type: 'text' },
             image: { label: 'Image', type: 'text', required: false },
           },
           authorize: async (credentials) => {
             const { email, password, name, image } = credentials;
-            if (!email || !password) {
-              return null;
-            }
-            if (typeof email !== 'string' || typeof password !== 'string') {
-              return null;
-            }
-
-            // logic to verify if user exists
+            if (!email || !password || typeof email !== 'string' || typeof password !== 'string') return null;
             const user = await adapter.getUserByEmail(email);
             if (!user) {
               const newUser = await adapter.createUser({
@@ -205,9 +170,7 @@ if (process.env.AUTH_SECRET) {
                 image: typeof image === 'string' && image.length > 0 ? image : undefined,
               });
               await adapter.linkAccount({
-                extraData: {
-                  password: await hash(password),
-                },
+                extraData: { password: await hash(password) },
                 type: 'credentials',
                 userId: newUser.id,
                 providerAccountId: newUser.id,
@@ -222,6 +185,7 @@ if (process.env.AUTH_SECRET) {
     }))
   );
 }
+
 app.all('/integrations/:path{.+}', async (c, next) => {
   const queryParams = c.req.query();
   const url = `${process.env.NEXT_PUBLIC_CREATE_BASE_URL ?? 'https://www.create.xyz'}/integrations/${c.req.param('path')}${Object.keys(queryParams).length > 0 ? `?${new URLSearchParams(queryParams).toString()}` : ''}`;
@@ -229,8 +193,6 @@ app.all('/integrations/:path{.+}', async (c, next) => {
   return proxy(url, {
     method: c.req.method,
     body: c.req.raw.body ?? null,
-    // @ts-ignore - this key is accepted even if types not aware and is
-    // required for streaming integrations
     duplex: 'half',
     redirect: 'manual',
     headers: {
@@ -249,6 +211,7 @@ app.use('/api/auth/*', async (c, next) => {
   }
   return next();
 });
+
 app.route(API_BASENAME, api);
 
 export default await createHonoServer({
