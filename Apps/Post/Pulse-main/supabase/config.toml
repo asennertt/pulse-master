@@ -1,0 +1,37 @@
+project_id = "bliinoubzojzffslwong"
+
+[functions.generate-post]
+verify_jwt = false
+
+[functions.fb-catalog-sync]
+verify_jwt = false
+
+[functions.lead-webhook]
+verify_jwt = false
+
+[functions.listing-payload]
+verify_jwt = false
+
+[functions.sold-webhook]
+verify_jwt = false
+
+[functions.dms-ingest]
+verify_jwt = false
+
+[functions.check-fb-tokens]
+verify_jwt = false
+
+[functions.generate-invite]
+verify_jwt = false
+
+[functions.accept-invite]
+verify_jwt = false
+
+[functions.setup-dealership]
+verify_jwt = false
+
+[functions.get-vehicle]
+verify_jwt = false
+
+[functions.sync-listing]
+verify_jwt = false
