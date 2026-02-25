@@ -2,33 +2,21 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-
-// IMPORT YOUR ACTUAL DASHBOARDS HERE
-import PostDashboard from "./pages/PostDashboard"; 
-import ValueDashboard from "./pages/ValueDashboard"; 
-
 import "./index.css"; 
 
 const App = () => (
   <BrowserRouter>
     <Routes>
+      {/* The main Lobby/Enrollment page */}
       <Route path="/" element={<Index />} />
+      
+      {/* The unified login page */}
       <Route path="/auth" element={<Auth />} />
 
-      {/* ONLY Pulse Post users can enter here */}
-      <Route path="/post-dashboard" element={
-        <ProtectedRoute requiredModule="post">
-          <PostDashboard />
-        </ProtectedRoute>
-      } />
-
-      {/* ONLY Pulse Value users can enter here */}
-      <Route path="/value-dashboard" element={
-        <ProtectedRoute requiredModule="value">
-          <ValueDashboard />
-        </ProtectedRoute>
-      } />
+      {/* Note: Post and Value dashboards are separate Railway apps.
+        Users will be redirected to their respective URLs via 
+        window.location.href after login/signup logic.
+      */}
 
       <Route path="*" element={<NotFound />} />
     </Routes>
