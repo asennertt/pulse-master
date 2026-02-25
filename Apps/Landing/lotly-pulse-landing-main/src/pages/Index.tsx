@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client"; // Ensure this path is correct for your setup
+import { supabase } from "@/integrations/supabase/client"; 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -25,7 +25,6 @@ export default function Index() {
     const dealershipName = formData.get("dealershipName") as string;
 
     try {
-      // REAL SUPABASE SIGNUP: This sends metadata to your database trigger
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -34,18 +33,19 @@ export default function Index() {
             full_name: fullName,
             dealership_name: dealershipName,
             phone: phone,
-            plan: plan // This tells the DB to flip the 'post' or 'value' flags
+            plan: plan 
           }
         }
       });
 
       if (error) throw error;
 
-      // TRIGGER SUCCESS ANIMATION
       setIsSuccess(true);
       toast.success("Dealer Protocol Initialized!");
       
-      // Wait 3.2 seconds for the ECG heartbeat animation before moving to Auth
+      // REDIRECT LOGIC FOR MULTI-APP SETUP:
+      // Instead of internal 'navigate', we wait for the animation 
+      // then send them to the login page of this app.
       setTimeout(() => navigate("/auth"), 3200);
 
     } catch (error: any) {
@@ -73,8 +73,50 @@ export default function Index() {
       </div>
 
       <div className="w-full max-w-lg relative">
-        {/* SUCCESS STATE UI (Revealed when isSuccess is true) */}
         <Card className={`absolute inset-0 z-10 flex flex-col items-center justify-center bg-card border-green-500/30 transition-all duration-700 ${isSuccess ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
           <div className="relative">
             <CheckCircle2 className="w-20 h-20 text-green-500 animate-in zoom-in duration-500" />
-            <Activity className="absolute -top-2 -right
+            <Activity className="absolute -top-2 -right-2 w-8 h-8 text-green-500/50 animate-pulse" />
+          </div>
+          <h2 className="text-2xl font-bold mt-4 tracking-tight">Access Granted</h2>
+          <p className="text-muted-foreground text-sm">Redirecting to Secure Portal...</p>
+        </Card>
+
+        {/* Signup Form */}
+        <Card className={`p-8 border-primary/20 bg-card/50 backdrop-blur-sm transition-all duration-500 ${isSuccess ? 'opacity-0 scale-95' : 'opacity-100'}`}>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold tracking-tight">Dealer Enrollment</h2>
+              <p className="text-xs text-muted-foreground uppercase tracking-widest">Initialization Phase</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+               <Input name="name" placeholder="Full Name" required className="bg-background/50" />
+               <Input name="phone" placeholder="Phone" required className="bg-background/50" />
+            </div>
+            <Input name="dealershipName" placeholder="Dealership Name" required className="bg-background/50" />
+            <Input name="email" type="email" placeholder="Work Email" required className="bg-background/50" />
+            <Input name="password" type="password" placeholder="Create Password" required className="bg-background/50" />
+            
+            <div className="flex bg-secondary/50 p-1 rounded-md">
+              {(['post', 'value', 'both'] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPlan(p)}
+                  className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-tighter transition-all rounded ${plan === p ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground'}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <Button type="submit" className="w-full font-bold uppercase italic tracking-tighter" disabled={loading}>
+              {loading ? "Syncing..." : "Initialize Protocol"}
+            </Button>
+          </form>
+        </Card>
+      </div>
+    </div>
+  );
+}
