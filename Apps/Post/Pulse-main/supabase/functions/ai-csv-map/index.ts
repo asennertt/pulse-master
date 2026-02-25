@@ -219,7 +219,7 @@ Map each CSV column to the most appropriate app field.`;
     let skipped = 0;
 
     // Pre-fetch existing VINs for this dealer to detect new vs updated
-    const dbQuery = supabase.from("vehicles").select("vin");
+    const dbQuery = supabase.from("pulse_vehicles").select("vin");
     if (dealerId) dbQuery.eq("dealer_id", dealerId);
     const { data: dbVehicles } = await dbQuery;
     const existingVins = new Set((dbVehicles || []).map((v: any) => v.vin));
@@ -247,7 +247,7 @@ Map each CSV column to the most appropriate app field.`;
 
       // Use upsert with onConflict:'vin' to handle duplicates gracefully
       const { error } = await supabase
-        .from("vehicles")
+        .from("pulse_vehicles")
         .upsert(record, { onConflict: "vin", ignoreDuplicates: false });
 
       if (!error) {
@@ -259,7 +259,7 @@ Map each CSV column to the most appropriate app field.`;
     }
 
     // ── Log the run ──
-    await supabase.from("ingestion_logs").insert({
+    await supabase.from("pulse_ingestion_logs").insert({
       source: file.name,
       feed_type: "CSV (AI-Mapped)",
       vehicles_scanned: rows.length,

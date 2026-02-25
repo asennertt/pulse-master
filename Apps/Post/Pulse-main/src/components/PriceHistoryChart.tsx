@@ -29,7 +29,7 @@ export function PriceHistoryChart({ vehicle, onClose }: PriceHistoryChartProps) 
 
   const loadHistory = async () => {
     const { data, error } = await supabase
-      .from("price_history")
+      .from("pulse_price_history")
       .select("*")
       .eq("vehicle_id", vehicle.id)
       .order("change_date", { ascending: true });

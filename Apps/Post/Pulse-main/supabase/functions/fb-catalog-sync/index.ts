@@ -26,7 +26,7 @@ serve(async (req) => {
 
     // 3. Fetch vehicle directly from Neon using raw SQL
     const [vehicle] = await sql`
-      SELECT * FROM public.vehicles 
+      SELECT * FROM public.pulse_vehicles 
       WHERE id = ${vehicleId} 
       LIMIT 1
     `;

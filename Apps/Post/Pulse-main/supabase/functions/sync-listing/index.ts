@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     }
 
     const { data, error } = await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .update(updateData)
       .eq("vin", vin)
       .eq("dealer_id", profile.dealership_id)

@@ -476,7 +476,7 @@ function SystemHealth() {
 
   const loadStats = async () => {
     const [vehicles, dealerships, usage] = await Promise.all([
-      supabase.from("vehicles").select("id, status", { count: "exact" }),
+      supabase.from("pulse_vehicles").select("id, status", { count: "exact" }),
       supabase.from("dealerships").select("id, status", { count: "exact" }),
       supabase.from("usage_tracking").select("*").gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
     ]);

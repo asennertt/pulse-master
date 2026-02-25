@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
     // Assign dealer_admin role
     await adminClient
-      .from("user_roles")
+      .from("pulse_user_roles")
       .insert({ user_id: user.id, role: "dealer_admin" });
 
     // Create dealer settings

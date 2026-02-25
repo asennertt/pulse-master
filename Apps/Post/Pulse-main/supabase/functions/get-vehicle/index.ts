@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: vehicle, error } = await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .select("price, mileage, make, model, year, images, vin, ai_description")
       .eq("vin", vin)
       .maybeSingle();

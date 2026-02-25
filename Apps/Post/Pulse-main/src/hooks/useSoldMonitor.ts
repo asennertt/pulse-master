@@ -24,7 +24,7 @@ export function useSoldMonitor({ enabled, intervalMs = 60000 }: SoldMonitorProps
   const checkForSoldVehicles = useCallback(async () => {
     try {
       const { data: dbVehicles, error } = await supabase
-        .from("vehicles")
+        .from("pulse_vehicles")
         .select("id, vin, year, make, model, status, synced_to_facebook");
 
       if (error || !dbVehicles) return;
