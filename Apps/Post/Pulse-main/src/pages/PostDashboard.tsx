@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/Contexts/AuthContext";
 import type { Vehicle, VehicleStatus } from "@/data/vehicles";
 import { VehicleCard } from "@/components/VehicleCard";
 import { DashboardStats } from "@/components/DashboardStats";

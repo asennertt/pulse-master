@@ -1,78 +1,72 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AuthProvider } from "./Contexts/AuthContext";
+import { ProtectedRoute } from "./Contexts/ProtectedRoute";
+
+// Import your pages (paths may vary based on your structure)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import Onboarding from "./pages/Onboarding";
-import SuperAdmin from "./pages/SuperAdmin";
-
-import TermsOfService from "./pages/TermsOfService";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Dashboard from "./pages/Dashboard";
+import AdminPanel from "./pages/AdminPanel";
+import Inventory from "./pages/Inventory";
+import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound";
-import { Loader2 } from "lucide-react";
 
-const queryClient = new QueryClient();
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, profile } = useAuth();
-
-  if (loading) return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <Loader2 className="h-8 w-8 text-primary animate-spin" />
-    </div>
-  );
-
-  if (!user) return <Navigate to="/auth" replace />;
-
-  // If profile exists and onboarding not complete, redirect to onboarding
-  if (profile && !profile.onboarding_complete) {
-    return <Navigate to="/onboarding" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-function AppRoutes() {
-  const { user, loading } = useAuth();
-
-  if (loading) return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <Loader2 className="h-8 w-8 text-primary animate-spin" />
-    </div>
-  );
-
+function App() {
   return (
-    <Routes>
-      <Route path="/landing" element={<Navigate to="/auth" replace />} />
-      <Route path="/terms" element={<TermsOfService />} />
-      <Route path="/privacy" element={<PrivacyPolicy />} />
-      <Route path="/auth" element={user ? <Navigate to="/" replace /> : <Auth />} />
-      <Route path="/onboarding" element={user ? <Onboarding /> : <Navigate to="/auth" replace />} />
-      <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-      <Route path="/superadmin" element={<SuperAdmin />} />
-      {/* Legacy admin route redirects */}
-      <Route path="/admin" element={<Navigate to="/superadmin" replace />} />
-      <Route path="/super-admin" element={<Navigate to="/superadmin" replace />} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <BrowserRouter>
+      {/* 1. Wrap the entire app in AuthProvider so useAuth() works everywhere */}
+      <AuthProvider>
+        <Routes>
+          {/* PUBLIC ROUTES */}
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/" element={<Index />} />
+
+          {/* GENERAL PROTECTED ROUTES (Any logged-in user) */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* DEALER ADMIN + SUBSCRIBED ONLY */}
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute requireDealerAdmin requireSubscription>
+                <Inventory />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* BILLING (Protected but doesn't require subscription to view) */}
+          <Route
+            path="/billing"
+            element={
+              <ProtectedRoute>
+                <Billing />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* SUPER ADMIN ONLY */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requireSuperAdmin>
+                <AdminPanel />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 404 CATCH-ALL */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
 
 export default App;

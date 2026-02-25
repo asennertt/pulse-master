@@ -1,38 +1,3 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import type { User, Session } from "@supabase/supabase-js";
-import { getPlanByProductId, type PlanKey } from "@/lib/stripe-plans";
-
-interface Profile {
-  id: string;
-  user_id: string;
-  dealership_id: string | null;
-  full_name: string;
-  avatar_url: string;
-  onboarding_step: number;
-  onboarding_complete: boolean;
-}
-
-interface AuthState {
-  user: User | null;
-  session: Session | null;
-  profile: Profile | null;
-  isSuperAdmin: boolean;
-  isDealerAdmin: boolean;
-  loading: boolean;
-  impersonatingDealerId: string | null;
-  setImpersonatingDealerId: (id: string | null) => void;
-  activeDealerId: string | null;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
-  subscribed: boolean;
-  subscriptionTier: PlanKey | null;
-  subscriptionEnd: string | null;
-  checkSubscription: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthState | undefined>(undefined);
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -47,29 +12,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const activeDealerId = impersonatingDealerId || profile?.dealership_id || null;
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-    if (data) setProfile(data as unknown as Profile);
-  };
+  // 1. Optimized Initialization using the Mega-RPC
+  const initializeUserData = async (userId: string) => {
+    try {
+      // Single database hit for all user context
+      const { data, error } = await supabase.rpc("get_user_context", {
+        _user_id: userId,
+      });
 
-  const checkSuperAdmin = async (userId: string) => {
-    const { data } = await supabase.rpc("has_role", {
-      _user_id: userId,
-      _role: "super_admin",
-    });
-    setIsSuperAdmin(!!data);
-  };
+      if (error) throw error;
 
-  const checkDealerAdmin = async (userId: string) => {
-    const { data } = await supabase.rpc("has_role", {
-      _user_id: userId,
-      _role: "dealer_admin",
-    });
-    setIsDealerAdmin(!!data);
+      if (data) {
+        setProfile(data.profile as unknown as Profile);
+        setIsSuperAdmin(!!data.is_super_admin);
+        setIsDealerAdmin(!!data.is_dealer_admin);
+      }
+
+      // Check subscription (Edge Function call)
+      await checkSubscription();
+    } catch (error) {
+      console.error("Error initializing user data:", error);
+    }
   };
 
   const checkSubscription = async () => {
@@ -84,83 +47,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshProfile = async () => {
-    if (user) await fetchProfile(user.id);
-  };
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-            checkSuperAdmin(session.user.id);
-            checkDealerAdmin(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setIsSuperAdmin(false);
-          setIsDealerAdmin(false);
-          setSubscribed(false);
-          setSubscriptionTier(null);
-          setSubscriptionEnd(null);
-        }
-        setLoading(false);
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-        checkSuperAdmin(session.user.id);
-        checkDealerAdmin(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Check subscription when user is available
-  useEffect(() => {
-    if (user) {
-      checkSubscription();
-      const interval = setInterval(checkSubscription, 60000);
-      return () => clearInterval(interval);
-    }
-  }, [user]);
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const clearAuth = () => {
     setUser(null);
     setSession(null);
     setProfile(null);
     setIsSuperAdmin(false);
     setIsDealerAdmin(false);
-    setImpersonatingDealerId(null);
     setSubscribed(false);
     setSubscriptionTier(null);
     setSubscriptionEnd(null);
+    setImpersonatingDealerId(null);
+  };
+
+  // 2. Auth State Listener
+  useEffect(() => {
+    // Check initial session once
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (initialSession) {
+        setSession(initialSession);
+        setUser(initialSession.user);
+        initializeUserData(initialSession.user.id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (currentSession?.user) {
+            await initializeUserData(currentSession.user.id);
+          }
+        }
+
+        if (event === 'SIGNED_OUT') {
+          clearAuth();
+        }
+
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 3. Subscription Polling
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (user) {
+      interval = setInterval(checkSubscription, 60000);
+    }
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    clearAuth();
+  };
+
+  const value = {
+    user, session, profile, isSuperAdmin, isDealerAdmin, loading,
+    impersonatingDealerId, setImpersonatingDealerId,
+    activeDealerId, signOut, 
+    refreshProfile: () => user ? initializeUserData(user.id) : Promise.resolve(),
+    subscribed, subscriptionTier, subscriptionEnd, checkSubscription,
   };
 
   return (
-    <AuthContext.Provider value={{
-      user, session, profile, isSuperAdmin, isDealerAdmin, loading,
-      impersonatingDealerId, setImpersonatingDealerId,
-      activeDealerId, signOut, refreshProfile,
-      subscribed, subscriptionTier, subscriptionEnd, checkSubscription,
-    }}>
-      {children}
+    <AuthContext.Provider value={value}>
+      {!loading && children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be inside AuthProvider");
-  return ctx;
 }

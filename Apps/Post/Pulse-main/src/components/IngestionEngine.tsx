@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/Contexts/AuthContext";
 import { DMSFieldMapper } from "@/components/DMSFieldMapper";
 import { Database, RefreshCw, Clock, CheckCircle2, AlertTriangle, Image, Loader2, Settings2, PlayCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";

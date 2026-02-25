@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/Contexts/AuthContext";
 import { DMSFieldMapper } from "@/components/DMSFieldMapper";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
