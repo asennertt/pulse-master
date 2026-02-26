@@ -138,7 +138,7 @@ export function MarketplaceDrawer({ vehicle, onClose, onSynced }: MarketplaceDra
     // Save AI description to the vehicle record
     try {
       const { data: updateData, error: updateError } = await supabase
-        .from("vehicles")
+        .from("pulse_vehicles")
         .update({ ai_description: desc } as any)
         .eq("id", vehicle.id)
         .select("id, ai_description, price, mileage");

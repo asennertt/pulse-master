@@ -82,7 +82,7 @@ const Index = () => {
   const loadUserPostings = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
-      .from("user_vehicle_postings")
+      .from("pulse_user_vehicle_postings")
       .select("vehicle_id, posted_at");
     if (data) {
       const map = new Map<string, string>();
@@ -165,7 +165,7 @@ const Index = () => {
     // Record posting for current user in user_vehicle_postings
     if (user && profile?.dealership_id) {
       const { error } = await supabase
-        .from("user_vehicle_postings")
+        .from("pulse_user_vehicle_postings")
         .upsert({
           user_id: user.id,
           vehicle_id: id,

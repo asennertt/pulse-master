@@ -25,7 +25,7 @@ export function StaffAssignSelect({ vehicleId, currentStaffId, onAssign }: Staff
   }, []);
 
   const handleSelect = async (s: Staff) => {
-    await supabase.from("vehicles").update({ assigned_staff_id: s.id }).eq("id", vehicleId);
+    await supabase.from("pulse_vehicles").update({ assigned_staff_id: s.id }).eq("id", vehicleId);
     onAssign(s.id, s.name);
     setOpen(false);
   };

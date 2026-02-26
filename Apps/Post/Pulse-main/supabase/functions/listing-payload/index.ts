@@ -23,7 +23,7 @@ serve(async (req) => {
     }
 
     const { data: vehicle, error } = await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .select("*")
       .eq("id", vehicleId)
       .single();

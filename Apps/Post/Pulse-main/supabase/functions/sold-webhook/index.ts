@@ -24,7 +24,7 @@ serve(async (req) => {
 
     // Find the vehicle
     const { data: vehicle, error: findErr } = await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .select("id, vin, year, make, model, trim, posted_by_staff_id, status")
       .eq("vin", vin)
       .single();
@@ -43,7 +43,7 @@ serve(async (req) => {
 
     // Mark as sold
     await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .update({ status: "sold", synced_to_facebook: false, facebook_post_id: null })
       .eq("id", vehicle.id);
 

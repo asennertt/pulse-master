@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     // ── Get current DB vehicles from NEON ──
     const dbVehicles = await sql`
       SELECT id, vin, status, price, dealer_id, year, make, model, trim, mileage, exterior_color, days_on_lot, images 
-      FROM public.vehicles 
+      FROM public.pulse_vehicles 
       WHERE dealer_id = ${dealerId}
     `;
     const dbVinMap = new Map(dbVehicles.map((v: any) => [v.vin, v]));
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       if (!existing) {
         // ── NEW VEHICLE — Direct Neon Insert ──
         await sql`
-          INSERT INTO public.vehicles (
+          INSERT INTO public.pulse_vehicles (
             vin, make, model, year, trim, mileage, price, exterior_color, days_on_lot, images, status, dealer_id
           ) VALUES (
             ${vin}, ${incoming.make || "Unknown"}, ${incoming.model || "Unknown"}, 
@@ -63,14 +63,14 @@ Deno.serve(async (req) => {
         // Handle Price Drops in Neon
         if (changes.price !== undefined && Number(existing.price) > Number(changes.price)) {
           await sql`
-            INSERT INTO public.price_history (vehicle_id, dealer_id, old_price, new_price, source)
+            INSERT INTO public.pulse_price_history (vehicle_id, dealer_id, old_price, new_price, source)
             VALUES (${existing.id}, ${dealerId}, ${existing.price}, ${changes.price}, ${feedSource})
           `;
           counters.drops++;
         }
 
         await sql`
-          UPDATE public.vehicles 
+          UPDATE public.pulse_vehicles 
           SET ${sql(changes)}, updated_at = NOW() 
           WHERE id = ${existing.id}
         `;
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
     if (!useSimulated) {
       const feedVins = Array.from(feedVinSet);
       const soldResults = await sql`
-        UPDATE public.vehicles 
+        UPDATE public.pulse_vehicles 
         SET status = 'sold', synced_to_facebook = false 
         WHERE dealer_id = ${dealerId} AND status != 'sold' AND vin NOT IN (${feedVins})
         RETURNING id
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
 
     // ── Log the ingestion run ──
     await sql`
-      INSERT INTO public.ingestion_logs (source, feed_type, vehicles_scanned, new_vehicles, status, dealer_id)
+      INSERT INTO public.pulse_ingestion_logs (source, feed_type, vehicles_scanned, new_vehicles, status, dealer_id)
       VALUES (${feedSource}, ${feedType}, ${feedVehicles.length}, ${counters.new}, 'success', ${dealerId})
     `;
 

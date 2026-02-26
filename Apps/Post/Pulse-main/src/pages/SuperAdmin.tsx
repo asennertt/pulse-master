@@ -573,7 +573,7 @@ function SystemHealthView() {
 
   const loadStats = async () => {
     const [vehicles, dealerships, usage] = await Promise.all([
-      supabase.from("vehicles").select("id, status"),
+      supabase.from("pulse_vehicles").select("id, status"),
       supabase.from("dealerships").select("id, status"),
       supabase.from("usage_tracking").select("*").gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
     ]);
@@ -636,7 +636,7 @@ function AuditLog() {
 
   const loadLogs = async () => {
     const [logsRes, dealersRes] = await Promise.all([
-      supabase.from("ingestion_logs").select("*").order("created_at", { ascending: false }).limit(200),
+      supabase.from("pulse_ingestion_logs").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("dealerships").select("id, name"),
     ]);
     setDealers((dealersRes.data as any[]) || []);

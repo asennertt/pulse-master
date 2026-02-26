@@ -39,7 +39,7 @@ serve(async (req) => {
 
     // Try to match VIN to a vehicle
     const { data: vehicle } = await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .select("id")
       .eq("vin", vin)
       .single();

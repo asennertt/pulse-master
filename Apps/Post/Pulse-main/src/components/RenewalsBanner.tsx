@@ -25,7 +25,7 @@ export function RenewalsBanner() {
 
     // Get current user's postings older than 7 days, joined with vehicle data
     const { data: postings } = await supabase
-      .from("user_vehicle_postings")
+      .from("pulse_user_vehicle_postings")
       .select("vehicle_id, posted_at")
       .lt("posted_at", sevenDaysAgo)
       .order("posted_at", { ascending: true })
@@ -39,7 +39,7 @@ export function RenewalsBanner() {
     // Get vehicle details for those postings (only available ones)
     const vehicleIds = (postings as unknown as { vehicle_id: string; posted_at: string }[]).map(p => p.vehicle_id);
     const { data: vehicleData } = await supabase
-      .from("vehicles")
+      .from("pulse_vehicles")
       .select("id, vin, year, make, model, images, status")
       .in("id", vehicleIds)
       .eq("status", "available");
