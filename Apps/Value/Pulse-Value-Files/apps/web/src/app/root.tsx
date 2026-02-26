@@ -25,8 +25,7 @@ import './global.css';
 // @ts-ignore
 import { LoadFonts } from 'virtual:load-fonts.jsx';
 import fetch from '@/__create/fetch';
-// @ts-ignore
-import { SessionProvider } from '@auth/create/react';
+import { SupabaseAuthProvider } from '@/lib/supabase-auth-provider';
 import { toPng } from 'html-to-image';
 import { useNavigate } from 'react-router';
 import { serializeError } from 'serialize-error';
@@ -454,8 +453,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <SessionProvider>
+    <SupabaseAuthProvider>
       <Outlet />
-    </SessionProvider>
+    </SupabaseAuthProvider>
   );
 }

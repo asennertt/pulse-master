@@ -1,29 +1,9 @@
 /**
- * WARNING: This file connects this app to Create's internal auth system. Do
- * not attempt to edit it. Do not import @auth/create or @auth/create
- * anywhere else or it may break. This is an internal package.
+ * auth.js — top-level auth re-export.
+ *
+ * Kept for backwards compatibility with any code that imports from `src/auth`.
+ * All real auth logic lives in `src/lib/supabase.ts` and
+ * `src/lib/supabase-auth-provider.tsx`.
  */
-import CreateAuth from '@auth/create';
-import Credentials from '@auth/core/providers/credentials';
-
-const result = CreateAuth({
-	providers: [
-		Credentials({
-			credentials: {
-				email: {
-					label: 'Email',
-					type: 'email',
-				},
-				password: {
-					label: 'Password',
-					type: 'password',
-				},
-			},
-		}),
-	],
-	pages: {
-		signIn: '/account/signin',
-		signOut: '/account/logout',
-	},
-});
-export const { auth } = result;
+export { supabase } from '@/lib/supabase';
+export { useSupabaseAuth } from '@/lib/supabase-auth-provider';
