@@ -69,7 +69,8 @@ const bundleFeatures = [
   "Admin Performance Dashboard", "DMS Sync", "Priority Support",
 ];
 
-const PlanCard = ({ plan }: { plan: Plan }) => (
+// Added 'mode' prop to PlanCard to help with routing
+const PlanCard = ({ plan, mode }: { plan: Plan, mode: string }) => (
   <Card className={`transition-all hover:-translate-y-0.5 ${plan.featured ? "border-primary shadow-lg" : "hover:shadow-lg"}`}>
     <CardContent className="p-8">
       <Badge variant={plan.featured ? "default" : "secondary"} className="mb-5 text-[11px] uppercase tracking-widest font-bold">
@@ -99,8 +100,9 @@ const PlanCard = ({ plan }: { plan: Plan }) => (
         ))}
       </ul>
 
-      <Button variant={plan.featured ? "default" : "outline"} className="w-full" size="lg" asChild>
-        <Link to={`/auth?plan=${encodeURIComponent(plan.title)}`}>{plan.cta}</Link>
+      <Button variant={plan.featured ? "default" : "outline"} className="w-full font-bold italic" size="lg" asChild>
+        {/* Updated link to include both mode and plan name */}
+        <Link to={`/auth?mode=${mode}&plan=${encodeURIComponent(plan.title)}`}>{plan.cta}</Link>
       </Button>
       <p className="text-xs text-center mt-2.5 text-muted-foreground">{plan.note}</p>
     </CardContent>
@@ -136,9 +138,9 @@ const Pricing = () => {
 
         <Tabs defaultValue="value" className="reveal">
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-3 mb-12">
-            <TabsTrigger value="value">Pulse Value</TabsTrigger>
-            <TabsTrigger value="post">Pulse Post</TabsTrigger>
-            <TabsTrigger value="bundle" className="relative">
+            <TabsTrigger value="value" className="font-bold uppercase tracking-tighter">Pulse Value</TabsTrigger>
+            <TabsTrigger value="post" className="font-bold uppercase tracking-tighter">Pulse Post</TabsTrigger>
+            <TabsTrigger value="bundle" className="relative font-bold uppercase tracking-tighter">
               Bundle & Save
               <span className="absolute -top-2.5 -right-1 bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                 Save
@@ -148,19 +150,19 @@ const Pricing = () => {
 
           <TabsContent value="value">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-[1080px] mx-auto">
-              {valuePlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} />)}
+              {valuePlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} mode="value" />)}
             </div>
           </TabsContent>
 
           <TabsContent value="post">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-[840px] mx-auto">
-              {postPlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} />)}
+              {postPlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} mode="post" />)}
             </div>
           </TabsContent>
 
           <TabsContent value="bundle">
             <div className="max-w-[640px] mx-auto">
-              <Card className="border-primary shadow-lg">
+              <Card className="border-primary shadow-lg bg-gradient-to-b from-primary/5 to-transparent">
                 <CardContent className="p-12 text-center">
                   <Badge className="mb-6 text-[11px] uppercase tracking-widest font-bold bg-green-500/20 text-green-400 border-green-500/30">
                     Best Value
@@ -197,10 +199,10 @@ const Pricing = () => {
                     ))}
                   </div>
 
-                  <Button size="lg" className="w-full max-w-[320px] shadow-lg" asChild>
-                    <Link to="/auth?plan=Bundle">Get the Bundle</Link>
+                  <Button size="lg" className="w-full max-w-[320px] shadow-lg font-bold italic" asChild>
+                    <Link to="/auth?mode=both&plan=Bundle">Get the Bundle</Link>
                   </Button>
-                  <p className="text-xs mt-2.5 text-muted-foreground">7-day free trial included</p>
+                  <p className="text-xs mt-2.5 text-muted-foreground uppercase tracking-widest font-semibold">7-day free trial included</p>
                 </CardContent>
               </Card>
             </div>

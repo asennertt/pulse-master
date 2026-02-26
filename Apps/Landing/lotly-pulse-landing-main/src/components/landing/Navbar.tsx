@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import logoTransparent from "@/assets/logo_transparent.png";
-import { Menu, X, LayoutDashboard, ChevronDown } from "lucide-react";
+import { Menu, X, ChevronDown, LayoutDashboard } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,12 +24,12 @@ const Navbar = () => {
 
   return (
     <nav
-      className={`fixed inset-x-0 top-0 z-[200] flex h-16 items-center px-[clamp(24px,5%,80px)] gap-10 backdrop-blur-xl transition-all ${
+      className={`fixed inset-x-0 top-0 z-[200] flex h-16 items-center px-[clamp(24px,5%,80px)] gap-10 backdrop-blur-xl backdrop-saturate-[180%] transition-shadow ${
         scrolled ? "shadow-sm border-b border-border" : "border-b border-transparent"
       }`}
       style={{ background: "hsl(var(--background) / 0.85)" }}
     >
-      <div className="flex items-center flex-shrink-0 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
+      <div className="flex items-center flex-shrink-0">
         <img src={logoTransparent} alt="Pulse" className="h-8" />
       </div>
 
@@ -47,15 +47,15 @@ const Navbar = () => {
       </ul>
 
       <div className="flex items-center gap-2.5 flex-shrink-0">
+        {/* --- DUAL SIGN-IN DROPDOWN (Maintained Original Button Sizes) --- */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex text-muted-foreground gap-1.5 font-bold italic uppercase tracking-tighter">
-              <LayoutDashboard className="w-4 h-4" />
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex text-muted-foreground gap-1.5">
               Sign in
               <ChevronDown className="w-3 h-3 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 bg-background border-border">
+          <DropdownMenuContent align="end" className="w-48 bg-background/95 backdrop-blur-lg border-border">
             <DropdownMenuItem asChild>
               <Link to="/auth?mode=post" className="cursor-pointer font-bold italic text-xs uppercase tracking-tighter">
                 Pulse Post Terminal
@@ -70,13 +70,36 @@ const Navbar = () => {
         </DropdownMenu>
 
         <Button size="sm" className="shadow-md font-bold italic uppercase tracking-tighter" asChild>
-          <a href="#pricing">GET STARTED</a>
+          <a href="#pricing">Get Started</a>
         </Button>
       </div>
 
-      <button className="md:hidden ml-auto text-muted-foreground" onClick={() => setMobileOpen(!mobileOpen)}>
+      <button
+        className="md:hidden ml-auto text-muted-foreground"
+        onClick={() => setMobileOpen(!mobileOpen)}
+        aria-label="Toggle menu"
+      >
         {mobileOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
+
+      {/* Mobile Menu Overlay */}
+      {mobileOpen && (
+        <div className="absolute top-16 left-0 right-0 bg-background border-b border-border p-6 flex flex-col gap-4 md:hidden animate-in fade-in slide-in-from-top-4">
+          {navLinks.map((item) => (
+            <a
+              key={item}
+              href={`#${item.toLowerCase().replace(/\s+/g, "")}`}
+              onClick={() => setMobileOpen(false)}
+              className="text-lg font-medium"
+            >
+              {item}
+            </a>
+          ))}
+          <div className="h-px bg-border my-2" />
+          <Link to="/auth?mode=post" className="text-primary font-bold italic">Post Terminal</Link>
+          <Link to="/auth?mode=value" className="text-primary font-bold italic">Value Terminal</Link>
+        </div>
+      )}
     </nav>
   );
 };
