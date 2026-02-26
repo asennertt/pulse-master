@@ -7,15 +7,15 @@ import "./index.css";
 const App = () => (
   <BrowserRouter>
     <Routes>
-      {/* The main Lobby/Enrollment page */}
+      {/* The main Enrollment / Brand page */}
       <Route path="/" element={<Index />} />
       
-      {/* The unified login page */}
+      {/* The shared authentication portal */}
       <Route path="/auth" element={<Auth />} />
 
-      {/* Note: Post and Value dashboards are separate Railway apps.
-        Users will be redirected to their respective URLs via 
-        window.location.href after login/signup logic.
+      {/* Note: Post and Value dashboards are hosted on separate Railway services.
+          Cross-app navigation is handled via window.location.href redirects 
+          once the user's role/plan is verified in the Auth portal.
       */}
 
       <Route path="*" element={<NotFound />} />
