@@ -1,3 +1,52 @@
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { User, Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+
+// ---------- Types ----------
+interface Profile {
+  id: string;
+  dealership_id: string | null;
+  full_name: string | null;
+  [key: string]: unknown;
+}
+
+type PlanKey = string;
+
+function getPlanByProductId(productId: string): PlanKey | null {
+  // Map Stripe product IDs to plan keys if needed
+  return productId ?? null;
+}
+
+// ---------- Context ----------
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  isSuperAdmin: boolean;
+  isDealerAdmin: boolean;
+  loading: boolean;
+  impersonatingDealerId: string | null;
+  setImpersonatingDealerId: (id: string | null) => void;
+  activeDealerId: string | null;
+  signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  subscribed: boolean;
+  subscriptionTier: PlanKey | null;
+  subscriptionEnd: string | null;
+  checkSubscription: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
+
+// ---------- Provider ----------
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -15,7 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 1. Optimized Initialization using the Mega-RPC
   const initializeUserData = async (userId: string) => {
     try {
-      // Single database hit for all user context
       const { data, error } = await supabase.rpc("get_user_context", {
         _user_id: userId,
       });
@@ -28,7 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsDealerAdmin(!!data.is_dealer_admin);
       }
 
-      // Check subscription (Edge Function call)
       await checkSubscription();
     } catch (error) {
       console.error("Error initializing user data:", error);
@@ -61,7 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 2. Auth State Listener
   useEffect(() => {
-    // Check initial session once
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       if (initialSession) {
         setSession(initialSession);
@@ -108,10 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuth();
   };
 
-  const value = {
+  const value: AuthContextType = {
     user, session, profile, isSuperAdmin, isDealerAdmin, loading,
     impersonatingDealerId, setImpersonatingDealerId,
-    activeDealerId, signOut, 
+    activeDealerId, signOut,
     refreshProfile: () => user ? initializeUserData(user.id) : Promise.resolve(),
     subscribed, subscriptionTier, subscriptionEnd, checkSubscription,
   };
