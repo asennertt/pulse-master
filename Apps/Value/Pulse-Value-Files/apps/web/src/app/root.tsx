@@ -8,7 +8,6 @@ import {
   useLocation,
   useRouteError,
 } from 'react-router';
-
 import { useButton } from '@react-aria/button';
 import {
   type CSSProperties,
@@ -21,7 +20,6 @@ import {
   useState,
 } from 'react';
 import './global.css';
-
 // @ts-ignore
 import { LoadFonts } from 'virtual:load-fonts.jsx';
 import fetch from '@/__create/fetch';
@@ -33,6 +31,11 @@ import { Toaster, toast } from 'sonner';
 import { useDevServerHeartbeat } from '../__create/useDevServerHeartbeat';
 import type { Route } from './+types/root';
 
+export const meta = () => [
+  { title: 'Pulse Value' },
+  { name: 'description', content: 'Lotly Pulse Value - Automotive Valuation Intelligence' },
+];
+
 export const links = () => [];
 
 if (globalThis.window && globalThis.window !== undefined) {
@@ -40,13 +43,13 @@ if (globalThis.window && globalThis.window !== undefined) {
 }
 
 const LoadFontsSSR = import.meta.env.SSR ? LoadFonts : null;
+
 if (import.meta.hot) {
   import.meta.hot.on('update-font-links', (urls: string[]) => {
     // remove old font links
     for (const link of document.querySelectorAll('link[data-auto-font]')) {
       link.remove();
     }
-
     // add new ones
     for (const url of urls) {
       const link = document.createElement('link');
@@ -67,6 +70,7 @@ function InternalErrorBoundary({ error: errorArg }: Route.ErrorBoundaryProps) {
   const scaleFactor = shouldScale ? 1.02 : 1;
   const copyButtonTextClass = shouldScale ? 'text-sm' : 'text-xs';
   const copyButtonPaddingClass = shouldScale ? 'px-[10px] py-[5px]' : 'px-[6px] py-[3px]';
+
   const postCountRef = useRef(0);
   const lastPostTimeRef = useRef(0);
   const lastErrorKeyRef = useRef<string | null>(null);
@@ -111,6 +115,7 @@ function InternalErrorBoundary({ error: errorArg }: Route.ErrorBoundaryProps) {
     const animateTimer = setTimeout(() => setIsOpen(true), 100);
     return () => clearTimeout(animateTimer);
   }, []);
+
   const { buttonProps: copyButtonProps } = useButton(
     {
       onPress: useCallback(() => {
@@ -130,6 +135,7 @@ function InternalErrorBoundary({ error: errorArg }: Route.ErrorBoundaryProps) {
           justifyContent: 'flex-start',
           margin: '0 auto',
         };
+
         navigator.clipboard.writeText(JSON.stringify(serializeError(error)));
         toast.custom(
           () => (
@@ -168,6 +174,7 @@ function InternalErrorBoundary({ error: errorArg }: Route.ErrorBoundaryProps) {
       return true;
     }
   }
+
   return (
     <>
       {!isInIframe() && (
@@ -271,8 +278,8 @@ export const ClientOnly: React.FC<ClientOnlyProps> = ({ loader }) => {
 /**
  * useHmrConnection()
  * ------------------
- * • `true`  → HMR socket is healthy
- * • `false` → socket lost (Vite is polling / may auto‑reload soon)
+ * - `true`  -> HMR socket is healthy
+ * - `false` -> socket lost (Vite is polling / may auto-reload soon)
  *
  * Works only in dev; in prod it always returns `true`.
  */
@@ -285,13 +292,13 @@ export function useHmrConnection(): boolean {
 
     /** Fired the moment the WS closes unexpectedly */
     const onDisconnect = () => setConnected(false);
-    /** Fired every time the WS (re‑)opens */
+    /** Fired every time the WS (re-)opens */
     const onConnect = () => setConnected(true);
 
     import.meta.hot.on('vite:ws:disconnect', onDisconnect);
     import.meta.hot.on('vite:ws:connect', onConnect);
 
-    // Optional: catch the “about to full‑reload” event as a last resort
+    // Optional: catch the about to full-reload event as a last resort
     const onFullReload = () => setConnected(false);
     import.meta.hot.on('vite:beforeFullReload', onFullReload);
 
@@ -306,23 +313,29 @@ export function useHmrConnection(): boolean {
 }
 
 const healthyResponseType = 'sandbox:web:healthcheck:response';
+
 const useHandshakeParent = () => {
   const isHmrConnected = useHmrConnection();
+
   useEffect(() => {
     const healthyResponse = {
       type: healthyResponseType,
       healthy: isHmrConnected,
       supportsErrorDetected: true,
     };
+
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'sandbox:web:healthcheck') {
         window.parent.postMessage(healthyResponse, '*');
       }
     };
+
     window.addEventListener('message', handleMessage);
+
     // Immediately respond to the parent window with a healthy response in
     // case we missed the healthcheck message
     window.parent.postMessage(healthyResponse, '*');
+
     return () => {
       window.removeEventListener('message', handleMessage);
     };
@@ -392,27 +405,34 @@ export const useHandleScreenshotRequest = () => {
     };
 
     window.addEventListener('message', handleMessage);
+
     return () => {
       window.removeEventListener('message', handleMessage);
     };
   }, []);
 };
+
 export function Layout({ children }: { children: ReactNode }) {
   useHandshakeParent();
   useHandleScreenshotRequest();
   useDevServerHeartbeat();
+
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location?.pathname;
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'sandbox:navigation') {
         navigate(event.data.pathname);
       }
     };
+
     window.addEventListener('message', handleMessage);
+
     window.parent.postMessage({ type: 'sandbox:web:ready' }, '*');
+
     return () => {
       window.removeEventListener('message', handleMessage);
     };
@@ -429,6 +449,7 @@ export function Layout({ children }: { children: ReactNode }) {
       );
     }
   }, [pathname]);
+
   return (
     <html lang="en">
       <head>
@@ -436,8 +457,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
-        <script type="module" src="/src/__create/dev-error-overlay.js"></script>
-        <link rel="icon" href="/src/__create/favicon.png" />
+        <link rel="icon" href="/favicon.png" />
         {LoadFontsSSR ? <LoadFontsSSR /> : null}
       </head>
       <body>
