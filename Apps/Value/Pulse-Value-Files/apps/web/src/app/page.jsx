@@ -1,47 +1,27 @@
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useSupabaseAuth } from '@/lib/supabase-auth-provider';
 
 /**
  * Root page — redirects based on auth state.
- * If the user arrived with token params (from Landing), set the session first.
- * If authenticated, send them to the dashboard.
- * If not, redirect to the Landing page to sign in.
+ * The SupabaseAuthProvider in root.tsx already handles token relay
+ * from the Landing page (access_token/refresh_token in URL params).
+ * This page just checks if the user is authenticated and redirects.
  */
 export default function Page() {
-  const { user, loading, supabase } = useSupabaseAuth();
+  const { user, loading } = useSupabaseAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
-
-    // If we arrived with tokens from Landing, set the session
-    if (accessToken && refreshToken && supabase) {
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      }).then(() => {
-        // Clean the URL and go to dashboard
-        navigate('/dashboard', { replace: true });
-      }).catch((err) => {
-        console.error('Failed to set session:', err);
-        // Redirect to landing if session setup fails
-        window.location.href = import.meta.env.VITE_PULSE_LANDING_URL || 'https://pulse.lotlyauto.com';
-      });
-      return;
-    }
-
     if (loading) return;
 
     if (user) {
       navigate('/dashboard', { replace: true });
     } else {
       // Redirect to Landing page for authentication
-      window.location.href = import.meta.env.VITE_PULSE_LANDING_URL || 'https://pulse.lotlyauto.com';
+      window.location.href = import.meta.env.NEXT_PUBLIC_PULSE_LANDING_URL || 'https://pulse.lotlyauto.com';
     }
-  }, [user, loading, navigate, searchParams, supabase]);
+  }, [user, loading, navigate]);
 
   // Show loading spinner while checking auth
   return (
