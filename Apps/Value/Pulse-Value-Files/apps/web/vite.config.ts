@@ -23,6 +23,10 @@ export default defineConfig({
       'lightningcss',
     ],
   },
+  ssr: {
+    // CJS packages that need to be externalized for SSR
+    noExternal: ['react-idle-timer'],
+  },
   logLevel: 'info',
   plugins: [
     nextPublicProcessEnv(),
