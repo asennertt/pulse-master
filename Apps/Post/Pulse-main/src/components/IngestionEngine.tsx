@@ -27,30 +27,75 @@ export function IngestionEngine() {
   const [showMapper, setShowMapper] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // FIX P9: track actual vehicle count for dealer instead of summing log rows
+  const [totalVehicles, setTotalVehicles] = useState<number | null>(null);
 
-  useEffect(() => { loadLogs(); }, []);
+  // FIX: resolve dealer ID via RPC if not already available from auth context
+  const [resolvedDealerId, setResolvedDealerId] = useState<string | null>(activeDealerId ?? null);
+
+  useEffect(() => {
+    if (activeDealerId) {
+      setResolvedDealerId(activeDealerId);
+    } else {
+      supabase.rpc("get_my_dealership_id").then(({ data }) => {
+        if (data) setResolvedDealerId(data as string);
+      });
+    }
+  }, [activeDealerId]);
+
+  useEffect(() => {
+    if (resolvedDealerId) {
+      loadLogs();
+      loadTotalVehicles();
+    }
+  }, [resolvedDealerId]);
 
   const loadLogs = async () => {
+    if (!resolvedDealerId) return;
+    // FIX C9: scope query by dealer_id so only this dealer's logs are returned
     const { data } = await supabase
       .from("pulse_ingestion_logs")
       .select("*")
+      .eq("dealer_id", resolvedDealerId)
       .order("created_at", { ascending: false })
       .limit(20);
     setLogs((data as unknown as IngestionLog[]) || []);
     setLoading(false);
   };
 
+  // FIX P9: query the actual vehicle count for the dealer rather than summing new_vehicles across logs
+  const loadTotalVehicles = async () => {
+    if (!resolvedDealerId) return;
+    const { count } = await supabase
+      .from("pulse_vehicles")
+      .select("*", { count: "exact", head: true })
+      .eq("dealer_id", resolvedDealerId);
+    setTotalVehicles(count ?? 0);
+  };
+
   const runIngestion = async () => {
+    if (!resolvedDealerId) return;
     setRunning(true);
     try {
+      // FIX C9: look up the dealer's actual DMS connection instead of hardcoding source/feedType
+      const { data: conn } = await supabase
+        .from("dms_connections")
+        .select("*")
+        .eq("dealer_id", resolvedDealerId)
+        .single();
+
+      const source = conn?.ftp_host ?? "Unknown Source";
+      const feedType = conn?.connection_type ?? "Unknown";
+
       const { data, error } = await supabase.functions.invoke("dms-ingest", {
-        body: { source: "DealerTrack DMS", feedType: "XML", dealer_id: activeDealerId },
+        body: { source, feedType, dealer_id: resolvedDealerId },
       });
       if (error) throw error;
       toast.success("Ingestion Complete", {
         description: `${data.new_vehicles} new, ${data.marked_sold} sold, ${data.images_fetched} images fetched`,
       });
       loadLogs();
+      loadTotalVehicles();
     } catch (e: any) {
       toast.error("Ingestion failed", { description: e.message });
     } finally {
@@ -61,19 +106,31 @@ export function IngestionEngine() {
   const handleDeleteImport = async (log: IngestionLog) => {
     setDeletingId(log.id);
     try {
-      // Only delete vehicles from CSV imports (not DMS/XML feeds)
       if (log.feed_type.toLowerCase().includes("csv")) {
+        const logTime = new Date(log.created_at).getTime();
+        const windowMs = 5000;
+        const rangeStart = new Date(logTime - windowMs).toISOString();
+        const rangeEnd = new Date(logTime + windowMs).toISOString();
+
+        const { count: affectedCount } = await supabase
+          .from("pulse_vehicles")
+          .select("*", { count: "exact", head: true })
+          .eq("dealer_id", log.dealer_id ?? "")
+          .filter("created_at", "gte", rangeStart)
+          .filter("created_at", "lte", rangeEnd);
+
+        toast.info(`Deleting ${affectedCount ?? 0} vehicle(s) from this import...`);
+
         const { error: vehicleError } = await supabase
           .from("pulse_vehicles")
           .delete()
           .eq("dealer_id", log.dealer_id ?? "")
-          .filter("created_at", "gte", new Date(new Date(log.created_at).getTime() - 10000).toISOString())
-          .filter("created_at", "lte", new Date(new Date(log.created_at).getTime() + 60000).toISOString());
+          .filter("created_at", "gte", rangeStart)
+          .filter("created_at", "lte", rangeEnd);
 
         if (vehicleError) throw vehicleError;
       }
 
-      // Delete the log entry itself
       const { error: logError } = await supabase
         .from("pulse_ingestion_logs")
         .delete()
@@ -85,6 +142,7 @@ export function IngestionEngine() {
         description: `Removed "${log.source}" and its vehicles from inventory.`,
       });
       setLogs(prev => prev.filter(l => l.id !== log.id));
+      loadTotalVehicles();
     } catch (e: any) {
       toast.error("Delete failed", { description: e.message });
     } finally {
@@ -105,7 +163,6 @@ export function IngestionEngine() {
 
   return (
     <div className="space-y-6">
-      {/* Header + Controls */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -131,7 +188,6 @@ export function IngestionEngine() {
         </div>
       </div>
 
-      {/* Polling Status Card */}
       <div className="glass-card rounded-lg p-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="text-center">
@@ -143,8 +199,8 @@ export function IngestionEngine() {
             <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Scan Count</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-success">{logs.reduce((s, l) => s + l.new_vehicles, 0)}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Ingested</div>
+            <div className="text-2xl font-bold text-success">{totalVehicles ?? "—"}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Vehicles</div>
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-primary">{logs.reduce((s, l) => s + l.images_fetched, 0)}</div>
@@ -153,14 +209,12 @@ export function IngestionEngine() {
         </div>
       </div>
 
-      {/* Field Mapper (collapsible) */}
       {showMapper && (
         <div className="glass-card rounded-lg p-4">
-          <DMSFieldMapper />
+          <DMSFieldMapper dealerId={resolvedDealerId ?? undefined} />
         </div>
       )}
 
-      {/* Ingestion Logs */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Ingestion History</h3>
@@ -204,7 +258,6 @@ export function IngestionEngine() {
                       <Clock className="h-3 w-3" />
                       {formatTime(log.created_at)}
                     </div>
-                    {/* Delete button — only show for CSV imports */}
                     {log.feed_type.toLowerCase().includes("csv") && (
                       confirmDeleteId === log.id ? (
                         <div className="flex items-center gap-1">

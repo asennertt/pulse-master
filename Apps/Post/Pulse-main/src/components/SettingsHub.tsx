@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
-// ── Types ──────────────────────────────────────────────
 type SettingsTab = "profile" | "dms" | "automation" | "ai" | "users";
 
 interface DealerSettings {
@@ -65,18 +64,37 @@ export function SettingsHub() {
   const [settings, setSettings] = useState<DealerSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeDealerId, setActiveDealerId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadSettings();
+    const init = async () => {
+      const { data, error } = await supabase.rpc("get_my_dealership_id");
+      if (error || !data) {
+        toast.error("Failed to resolve dealership");
+        setLoading(false);
+        return;
+      }
+      setActiveDealerId(data as string);
+    };
+    init();
   }, []);
 
+  useEffect(() => {
+    if (activeDealerId) loadSettings();
+  }, [activeDealerId]);
+
   const loadSettings = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("dealer_settings")
       .select("*")
+      .eq("dealer_id", activeDealerId)
       .limit(1)
       .single();
-    if (data) setSettings(data as unknown as DealerSettings);
+    if (error) {
+      toast.error("Failed to load settings");
+    } else if (data) {
+      setSettings(data as unknown as DealerSettings);
+    }
     setLoading(false);
   };
 
@@ -85,23 +103,26 @@ export function SettingsHub() {
     const toSave = partial ? { ...settings, ...partial } : settings;
     const { error } = await supabase
       .from("dealer_settings")
-      .update({
-        dealership_name: toSave.dealership_name,
-        dba: toSave.dba,
-        primary_phone: toSave.primary_phone,
-        address: toSave.address,
-        website_url: toSave.website_url,
-        logo_url: toSave.logo_url,
-        brand_color: toSave.brand_color,
-        auto_post_new_inventory: toSave.auto_post_new_inventory,
-        auto_renew_listings: toSave.auto_renew_listings,
-        auto_renew_days: toSave.auto_renew_days,
-        price_markup: toSave.price_markup,
-        delete_on_sold: toSave.delete_on_sold,
-        global_system_prompt: toSave.global_system_prompt,
-        auto_blur_plates: toSave.auto_blur_plates,
-      })
-      .eq("id", settings.id);
+      .upsert(
+        {
+          dealer_id: activeDealerId,
+          dealership_name: toSave.dealership_name,
+          dba: toSave.dba,
+          primary_phone: toSave.primary_phone,
+          address: toSave.address,
+          website_url: toSave.website_url,
+          logo_url: toSave.logo_url,
+          brand_color: toSave.brand_color,
+          auto_post_new_inventory: toSave.auto_post_new_inventory,
+          auto_renew_listings: toSave.auto_renew_listings,
+          auto_renew_days: toSave.auto_renew_days,
+          price_markup: toSave.price_markup,
+          delete_on_sold: toSave.delete_on_sold,
+          global_system_prompt: toSave.global_system_prompt,
+          auto_blur_plates: toSave.auto_blur_plates,
+        },
+        { onConflict: "dealer_id" }
+      );
     setSaving(false);
     if (error) {
       toast.error("Failed to save settings");
@@ -149,7 +170,6 @@ export function SettingsHub() {
         )}
       </div>
 
-      {/* Sub-tabs */}
       <div className="flex items-center rounded-lg bg-secondary border border-border p-0.5 w-fit">
         {tabs.map(t => (
           <button
@@ -173,10 +193,8 @@ export function SettingsHub() {
   );
 }
 
-// ── Shared input style ────────────────────────────────
 const inputCls = "w-full rounded-md bg-secondary border border-border px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors";
 
-// ── 1. Dealership Profile ──────────────────────────────
 function DealershipProfile({
   settings,
   updateField,
@@ -186,7 +204,6 @@ function DealershipProfile({
 }) {
   return (
     <div className="space-y-6">
-      {/* Basic Info */}
       <div className="glass-card rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" /> Basic Information
@@ -194,53 +211,26 @@ function DealershipProfile({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Dealership Name</label>
-            <input
-              value={settings.dealership_name}
-              onChange={e => updateField("dealership_name", e.target.value)}
-              placeholder="Sunshine Motors"
-              className={inputCls}
-            />
+            <input value={settings.dealership_name} onChange={e => updateField("dealership_name", e.target.value)} placeholder="Sunshine Motors" className={inputCls} />
           </div>
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">DBA (Doing Business As)</label>
-            <input
-              value={settings.dba}
-              onChange={e => updateField("dba", e.target.value)}
-              placeholder="Sunshine Auto Group"
-              className={inputCls}
-            />
+            <input value={settings.dba} onChange={e => updateField("dba", e.target.value)} placeholder="Sunshine Auto Group" className={inputCls} />
           </div>
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Phone className="h-3 w-3" /> Primary Phone</label>
-            <input
-              value={settings.primary_phone}
-              onChange={e => updateField("primary_phone", e.target.value)}
-              placeholder="(555) 123-4567"
-              className={inputCls}
-            />
+            <input value={settings.primary_phone} onChange={e => updateField("primary_phone", e.target.value)} placeholder="(555) 123-4567" className={inputCls} />
           </div>
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Globe className="h-3 w-3" /> Website URL</label>
-            <input
-              value={settings.website_url}
-              onChange={e => updateField("website_url", e.target.value)}
-              placeholder="https://sunshinemotors.com"
-              className={inputCls}
-            />
+            <input value={settings.website_url} onChange={e => updateField("website_url", e.target.value)} placeholder="https://sunshinemotors.com" className={inputCls} />
           </div>
           <div className="sm:col-span-2 space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><MapPin className="h-3 w-3" /> Address</label>
-            <input
-              value={settings.address}
-              onChange={e => updateField("address", e.target.value)}
-              placeholder="1234 Auto Blvd, Dallas, TX 75201"
-              className={inputCls}
-            />
+            <input value={settings.address} onChange={e => updateField("address", e.target.value)} placeholder="1234 Auto Blvd, Dallas, TX 75201" className={inputCls} />
           </div>
         </div>
       </div>
-
-      {/* Branding */}
       <div className="glass-card rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Palette className="h-4 w-4 text-primary" /> Branding
@@ -259,12 +249,7 @@ function DealershipProfile({
                 </div>
               )}
               <div className="flex-1">
-                <input
-                  value={settings.logo_url}
-                  onChange={e => updateField("logo_url", e.target.value)}
-                  placeholder="https://example.com/logo.png"
-                  className={inputCls}
-                />
+                <input value={settings.logo_url} onChange={e => updateField("logo_url", e.target.value)} placeholder="https://example.com/logo.png" className={inputCls} />
                 <p className="text-[10px] text-muted-foreground mt-1">Enter a URL to your logo image. Used on AI-generated overlays.</p>
               </div>
             </div>
@@ -272,18 +257,8 @@ function DealershipProfile({
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Primary Brand Color</label>
             <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={settings.brand_color}
-                onChange={e => updateField("brand_color", e.target.value)}
-                className="h-10 w-14 rounded-md border border-border cursor-pointer bg-transparent"
-              />
-              <input
-                value={settings.brand_color}
-                onChange={e => updateField("brand_color", e.target.value)}
-                placeholder="#1e90ff"
-                className={inputCls}
-              />
+              <input type="color" value={settings.brand_color} onChange={e => updateField("brand_color", e.target.value)} className="h-10 w-14 rounded-md border border-border cursor-pointer bg-transparent" />
+              <input value={settings.brand_color} onChange={e => updateField("brand_color", e.target.value)} placeholder="#1e90ff" className={inputCls} />
             </div>
             <p className="text-[10px] text-muted-foreground">Applied to AI image overlays and branded content.</p>
           </div>
@@ -293,7 +268,6 @@ function DealershipProfile({
   );
 }
 
-// ── 2. Automation Rules ────────────────────────────────
 function AutomationRules({
   settings,
   updateField,
@@ -303,7 +277,6 @@ function AutomationRules({
 }) {
   return (
     <div className="space-y-6">
-      {/* Posting Schedule */}
       <div className="glass-card rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Clock className="h-4 w-4 text-primary" /> Posting Schedule
@@ -314,40 +287,23 @@ function AutomationRules({
               <div className="text-sm font-medium text-foreground">Auto-Post New Inventory</div>
               <div className="text-xs text-muted-foreground mt-0.5">Automatically create a Marketplace listing when new vehicles arrive from the DMS feed.</div>
             </div>
-            <Switch
-              checked={settings.auto_post_new_inventory}
-              onCheckedChange={v => updateField("auto_post_new_inventory", v)}
-            />
+            <Switch checked={settings.auto_post_new_inventory} onCheckedChange={v => updateField("auto_post_new_inventory", v)} />
           </div>
           <div className="flex items-center justify-between rounded-md bg-secondary/60 border border-border p-4">
             <div>
               <div className="text-sm font-medium text-foreground">Auto-Renew Listings</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                Automatically renew active listings every <strong>{settings.auto_renew_days}</strong> days to keep them fresh.
-              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Automatically renew active listings every <strong>{settings.auto_renew_days}</strong> days to keep them fresh.</div>
               {settings.auto_renew_listings && (
                 <div className="mt-2 flex items-center gap-2">
                   <label className="text-[10px] text-muted-foreground uppercase">Renewal interval (days):</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={settings.auto_renew_days}
-                    onChange={e => updateField("auto_renew_days", parseInt(e.target.value) || 7)}
-                    className="w-16 rounded-md bg-background border border-border px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                  <input type="number" min={1} max={30} value={settings.auto_renew_days} onChange={e => updateField("auto_renew_days", parseInt(e.target.value) || 7)} className="w-16 rounded-md bg-background border border-border px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
               )}
             </div>
-            <Switch
-              checked={settings.auto_renew_listings}
-              onCheckedChange={v => updateField("auto_renew_listings", v)}
-            />
+            <Switch checked={settings.auto_renew_listings} onCheckedChange={v => updateField("auto_renew_listings", v)} />
           </div>
         </div>
       </div>
-
-      {/* Pricing Rules */}
       <div className="glass-card rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <DollarSign className="h-4 w-4 text-success" /> Pricing Rules
@@ -357,19 +313,10 @@ function AutomationRules({
           <div className="text-xs text-muted-foreground">This amount is automatically added to the DMS feed price before listing. Set to 0 for no markup.</div>
           <div className="flex items-center gap-2 mt-2">
             <span className="text-lg font-bold text-success">$</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.price_markup}
-              onChange={e => updateField("price_markup", parseFloat(e.target.value) || 0)}
-              className="w-32 rounded-md bg-background border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            />
+            <input type="number" min={0} step={50} value={settings.price_markup} onChange={e => updateField("price_markup", parseFloat(e.target.value) || 0)} className="w-32 rounded-md bg-background border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
           </div>
         </div>
       </div>
-
-      {/* Smart Delete */}
       <div className="glass-card rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Trash2 className="h-4 w-4 text-destructive" /> Smart Delete
@@ -379,17 +326,13 @@ function AutomationRules({
             <div className="text-sm font-medium text-foreground">Delete on Sold</div>
             <div className="text-xs text-muted-foreground mt-0.5">Instantly remove a Marketplace listing once the vehicle disappears from the DMS feed (marked as sold).</div>
           </div>
-          <Switch
-            checked={settings.delete_on_sold}
-            onCheckedChange={v => updateField("delete_on_sold", v)}
-          />
+          <Switch checked={settings.delete_on_sold} onCheckedChange={v => updateField("delete_on_sold", v)} />
         </div>
       </div>
     </div>
   );
 }
 
-// ── 3. AI Customization ────────────────────────────────
 function AICustomization({
   settings,
   updateField,
@@ -404,19 +347,10 @@ function AICustomization({
           <Brain className="h-4 w-4 text-primary" /> Global System Prompt Additions
         </h3>
         <div className="space-y-2">
-          <textarea
-            value={settings.global_system_prompt}
-            onChange={e => updateField("global_system_prompt", e.target.value)}
-            rows={6}
-            placeholder={"Examples:\n• Always mention our 10-year warranty\n• Never mention financing options\n• Include our tagline: 'Drive Happy'\n• Focus on safety features for family vehicles"}
-            className="w-full rounded-md bg-secondary border border-border px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors resize-y min-h-[120px]"
-          />
-          <p className="text-[10px] text-muted-foreground">
-            These instructions are appended to every AI-generated post. Use them to enforce brand voice, compliance rules, or promotional messaging.
-          </p>
+          <textarea value={settings.global_system_prompt} onChange={e => updateField("global_system_prompt", e.target.value)} rows={6} placeholder={"Examples:\n• Always mention our 10-year warranty\n• Never mention financing options\n• Include our tagline: 'Drive Happy'\n• Focus on safety features for family vehicles"} className="w-full rounded-md bg-secondary border border-border px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors resize-y min-h-[120px]" />
+          <p className="text-[10px] text-muted-foreground">These instructions are appended to every AI-generated post. Use them to enforce brand voice, compliance rules, or promotional messaging.</p>
         </div>
       </div>
-
       <div className="glass-card rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Eye className="h-4 w-4 text-primary" /> Image Processing
@@ -424,21 +358,15 @@ function AICustomization({
         <div className="flex items-center justify-between rounded-md bg-secondary/60 border border-border p-4">
           <div>
             <div className="text-sm font-medium text-foreground">Auto-Blur License Plates</div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              Automatically detect and blur license plates in vehicle photos before posting. Protects customer privacy.
-            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">Automatically detect and blur license plates in vehicle photos before posting. Protects customer privacy.</div>
           </div>
-          <Switch
-            checked={settings.auto_blur_plates}
-            onCheckedChange={v => updateField("auto_blur_plates", v)}
-          />
+          <Switch checked={settings.auto_blur_plates} onCheckedChange={v => updateField("auto_blur_plates", v)} />
         </div>
       </div>
     </div>
   );
 }
 
-// ── 4. User Management ─────────────────────────────────
 function UserManagement() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -457,29 +385,17 @@ function UserManagement() {
   };
 
   const loadPostingStats = async () => {
-    const { data } = await supabase
-      .from("pulse_vehicles")
-      .select("posted_by_staff_id")
-      .eq("synced_to_facebook", true)
-      .not("posted_by_staff_id", "is", null);
+    const { data } = await supabase.from("pulse_vehicles").select("posted_by_staff_id").eq("synced_to_facebook", true).not("posted_by_staff_id", "is", null);
     if (data) {
       const counts: Record<string, number> = {};
-      data.forEach((v: any) => {
-        counts[v.posted_by_staff_id] = (counts[v.posted_by_staff_id] || 0) + 1;
-      });
+      data.forEach((v: any) => { counts[v.posted_by_staff_id] = (counts[v.posted_by_staff_id] || 0) + 1; });
       setPostingStats(counts);
     }
   };
 
   const handleAdd = async () => {
     if (!form.name.trim()) { toast.error("Name is required"); return; }
-    const { error } = await supabase.from("staff").insert({
-      name: form.name.trim(),
-      email: form.email.trim() || null,
-      phone: form.phone.trim() || null,
-      facebook_account: form.facebook_account.trim() || null,
-      role: form.role,
-    });
+    const { error } = await supabase.from("staff").insert({ name: form.name.trim(), email: form.email.trim() || null, phone: form.phone.trim() || null, facebook_account: form.facebook_account.trim() || null, role: form.role });
     if (error) { toast.error("Failed to add staff member"); return; }
     toast.success(`${form.name} added to team`);
     setForm({ name: "", email: "", phone: "", facebook_account: "", role: "salesperson" });
@@ -488,14 +404,23 @@ function UserManagement() {
   };
 
   const toggleActive = async (s: Staff) => {
-    await supabase.from("staff").update({ active: !s.active }).eq("id", s.id);
     setStaff(prev => prev.map(x => x.id === s.id ? { ...x, active: !x.active } : x));
+    const { error } = await supabase.from("staff").update({ active: !s.active }).eq("id", s.id);
+    if (error) {
+      setStaff(prev => prev.map(x => x.id === s.id ? { ...x, active: s.active } : x));
+      toast.error("Failed to update staff status");
+    }
   };
 
   const updateRole = async (s: Staff, newRole: string) => {
-    await supabase.from("staff").update({ role: newRole }).eq("id", s.id);
     setStaff(prev => prev.map(x => x.id === s.id ? { ...x, role: newRole } : x));
-    toast.success(`${s.name} updated to ${newRole}`);
+    const { error } = await supabase.from("staff").update({ role: newRole }).eq("id", s.id);
+    if (error) {
+      setStaff(prev => prev.map(x => x.id === s.id ? { ...x, role: s.role } : x));
+      toast.error(`Failed to update role for ${s.name}`);
+    } else {
+      toast.success(`${s.name} updated to ${newRole}`);
+    }
   };
 
   const handleGenerateInvite = async () => {
@@ -515,59 +440,32 @@ function UserManagement() {
   };
 
   const copyInviteLink = () => {
-    if (inviteLink) {
-      navigator.clipboard.writeText(inviteLink);
-      toast.success("Invite link copied to clipboard!");
-    }
+    if (inviteLink) { navigator.clipboard.writeText(inviteLink); toast.success("Invite link copied to clipboard!"); }
   };
 
   return (
     <div className="space-y-6">
-      {/* ── Invite Staff Section ── */}
       <div className="glass-card rounded-lg p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Link2 className="h-4 w-4 text-primary" /> Invite Staff to Join
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          Generate a shareable link to invite staff members. They'll create their own account and be automatically linked to your dealership.
-        </p>
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Link2 className="h-4 w-4 text-primary" /> Invite Staff to Join</h3>
+        <p className="text-xs text-muted-foreground">Generate a shareable link to invite staff members. They'll create their own account and be automatically linked to your dealership.</p>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleGenerateInvite}
-            disabled={generatingInvite}
-            className="flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
+          <button onClick={handleGenerateInvite} disabled={generatingInvite} className="flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
             {generatingInvite ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             Generate Invite Link
           </button>
         </div>
         {inviteLink && (
           <div className="flex items-center gap-2 rounded-md bg-secondary border border-border p-3">
-            <input
-              value={inviteLink}
-              readOnly
-              className="flex-1 bg-transparent text-xs text-foreground font-mono focus:outline-none truncate"
-            />
-            <button
-              onClick={copyInviteLink}
-              className="shrink-0 flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs text-primary hover:bg-primary/20 transition-colors"
-            >
+            <input value={inviteLink} readOnly className="flex-1 bg-transparent text-xs text-foreground font-mono focus:outline-none truncate" />
+            <button onClick={copyInviteLink} className="shrink-0 flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs text-primary hover:bg-primary/20 transition-colors">
               <Copy className="h-3 w-3" /> Copy
             </button>
           </div>
         )}
       </div>
-
-      {/* ── Posting Stats Section ── */}
       <div className="glass-card rounded-lg p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-primary" /> Staff Posting Activity
-        </h3>
-        {loading ? (
-          <div className="text-center py-4 text-muted-foreground text-sm">Loading...</div>
-        ) : staff.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No staff members yet.</p>
-        ) : (
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Staff Posting Activity</h3>
+        {loading ? <div className="text-center py-4 text-muted-foreground text-sm">Loading...</div> : staff.length === 0 ? <p className="text-xs text-muted-foreground">No staff members yet.</p> : (
           <div className="space-y-2">
             {staff.map(s => {
               const count = postingStats[s.id] || 0;
@@ -575,35 +473,21 @@ function UserManagement() {
                 <div key={s.id} className="flex items-center justify-between rounded-md bg-secondary/60 border border-border px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className={`h-2 w-2 rounded-full ${s.active ? "bg-success" : "bg-muted-foreground"}`} />
-                    <div>
-                      <span className="text-sm font-medium text-foreground">{s.name}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{s.role}</span>
-                    </div>
+                    <div><span className="text-sm font-medium text-foreground">{s.name}</span><span className="text-xs text-muted-foreground ml-2">{s.role}</span></div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-primary">{count}</span>
-                    <span className="text-[10px] text-muted-foreground ml-1">posted</span>
-                  </div>
+                  <div className="text-right"><span className="text-lg font-bold text-primary">{count}</span><span className="text-[10px] text-muted-foreground ml-1">posted</span></div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
-
-      {/* ── Staff Accounts Table ── */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" /> Staff Accounts
-        </h3>
-        <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
-        >
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Staff Accounts</h3>
+        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors">
           <Plus className="h-3.5 w-3.5" /> Add Staff
         </button>
       </div>
-
       {showAdd && (
         <div className="glass-card rounded-lg p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -622,10 +506,7 @@ function UserManagement() {
           </div>
         </div>
       )}
-
-      {loading ? (
-        <div className="text-center py-8 text-muted-foreground text-sm">Loading team...</div>
-      ) : (
+      {loading ? <div className="text-center py-8 text-muted-foreground text-sm">Loading team...</div> : (
         <div className="glass-card rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -642,61 +523,27 @@ function UserManagement() {
               <tbody>
                 {staff.map(s => (
                   <tr key={s.id} className={`border-b border-border/50 hover:bg-secondary/30 transition-colors ${!s.active ? "opacity-50" : ""}`}>
+                    <td className="px-4 py-3"><div className="font-medium text-foreground">{s.name}</div></td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">{s.name}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={s.role}
-                        onChange={e => updateRole(s, e.target.value)}
-                        className={`rounded-md px-2 py-1 text-xs font-medium border ${
-                          s.role === "admin"
-                            ? "bg-destructive/10 border-destructive/20 text-destructive"
-                            : s.role === "manager"
-                            ? "bg-primary/10 border-primary/20 text-primary"
-                            : "bg-secondary border-border text-muted-foreground"
-                        } focus:outline-none focus:ring-1 focus:ring-primary`}
-                      >
+                      <select value={s.role} onChange={e => updateRole(s, e.target.value)} className="rounded bg-secondary border border-border px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
                         <option value="salesperson">Salesperson</option>
                         <option value="manager">Manager</option>
                       </select>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="space-y-0.5 text-xs text-muted-foreground">
-                        {s.email && <div className="flex items-center gap-1"><Mail className="h-3 w-3" /> {s.email}</div>}
-                        {s.phone && <div className="flex items-center gap-1"><Phone className="h-3 w-3" /> {s.phone}</div>}
-                        {!s.email && !s.phone && <span className="text-muted-foreground/50">—</span>}
+                      <div className="text-xs text-muted-foreground">
+                        {s.email && <div className="flex items-center gap-1"><Mail className="h-3 w-3" />{s.email}</div>}
+                        {s.phone && <div>{s.phone}</div>}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {s.facebook_account ? (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Facebook className="h-3.5 w-3.5 text-primary" />
-                          <span className="text-foreground">{s.facebook_account}</span>
-                          <CheckCircle2 className="h-3 w-3 text-success" />
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/50">
-                          <Facebook className="h-3.5 w-3.5" />
-                          <span>Not linked</span>
-                          <XCircle className="h-3 w-3" />
-                        </div>
-                      )}
+                      {s.facebook_account ? <div className="flex items-center gap-1 text-xs text-muted-foreground"><Facebook className="h-3 w-3" />{s.facebook_account}</div> : <span className="text-xs text-muted-foreground/40">—</span>}
                     </td>
+                    <td className="px-4 py-3 text-center"><span className="text-sm font-bold text-primary">{postingStats[s.id] || 0}</span></td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-bold text-primary">{postingStats[s.id] || 0}</span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={() => toggleActive(s)}>
-                        {s.active ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-success/15 border border-success/30 px-2 py-0.5 text-[10px] font-medium text-success">
-                            <span className="h-1.5 w-1.5 rounded-full bg-success" /> Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-muted border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" /> Disabled
-                          </span>
-                        )}
+                      <button onClick={() => toggleActive(s)} className="inline-flex items-center gap-1">
+                        {s.active ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-muted-foreground" />}
+                        <span className="text-[10px] text-muted-foreground">{s.active ? "Active" : "Inactive"}</span>
                       </button>
                     </td>
                   </tr>
