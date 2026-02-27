@@ -20,11 +20,11 @@ export async function fetchVehicles(dealerId?: string): Promise<Vehicle[]> {
 
 // 2. Update vehicle status (Neon Direct via Supabase Client)
 export async function updateVehicleStatus(id: string, status: VehicleStatus): Promise<void> {
-  const updates: Record<string, any> = { 
+  const updates: Record<string, any> = {
     status,
-    updated_at: new Date().toISOString() 
+    updated_at: new Date().toISOString()
   };
-  
+
   if (status === "sold") {
     updates.synced_to_facebook = false;
     updates.facebook_post_id = null;
@@ -34,13 +34,25 @@ export async function updateVehicleStatus(id: string, status: VehicleStatus): Pr
     .from("pulse_vehicles")
     .update(updates)
     .eq("id", id);
-    
+
   if (error) throw error;
 }
 
-// 3. Trigger the REAL DMS Sync Edge Function
+// 3. Toggle Facebook sync status for a vehicle
+export async function updateFacebookSync(id: string, synced: boolean): Promise<void> {
+  const { error } = await supabase
+    .from("pulse_vehicles")
+    .update({
+      synced_to_facebook: synced,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+// 4. Trigger the REAL DMS Sync Edge Function
 export async function syncInventoryFromDMS(): Promise<{ new_vehicles: number; marked_sold: number }> {
-  // Instead of mock logic, we trigger the Edge Function we built for Neon
   const { data, error } = await supabase.functions.invoke("dms-ingest", {
     body: { source: "Manual Sync", feedType: "CSV" }
   });
