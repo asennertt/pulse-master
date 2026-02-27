@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Server, Copy, Eye, EyeOff, RefreshCw, ShieldAlert,
   CheckCircle2, Loader2, KeyRound,
 } from "lucide-react";
+
+// R18: Default SFTP host shown before credentials are loaded from the edge function.
+// The authoritative host is returned by fn-generate-sftp-creds and takes precedence.
+const DEFAULT_SFTP_HOST = "us-east-1.sftpcloud.io";
 
 interface SFTPCredentials {
   host: string;
@@ -33,9 +37,6 @@ function CopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-/**
- * One-Time View Modal for newly generated credentials (Super Admin)
- */
 export function CredentialOneTimeModal({
   creds,
   dealerName,
@@ -107,9 +108,6 @@ export function CredentialOneTimeModal({
   );
 }
 
-/**
- * Dealer-facing Connection Details card for DMS Settings
- */
 export function SFTPConnectionCard({ dealerId }: { dealerId: string | null }) {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -117,6 +115,23 @@ export function SFTPConnectionCard({ dealerId }: { dealerId: string | null }) {
   const [showPass, setShowPass] = useState(false);
   const [creds, setCreds] = useState<SFTPCredentials | null>(null);
   const [checked, setChecked] = useState(false);
+  const [sftpHost, setSftpHost] = useState<string>(DEFAULT_SFTP_HOST);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const userId = data.user?.id;
+      if (!userId) return;
+      supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .single()
+        .then(({ data: profile }) => {
+          setUserRole(profile?.role ?? null);
+        });
+    });
+  }, []);
 
   const checkCreds = async () => {
     if (!dealerId) return;
@@ -127,9 +142,11 @@ export function SFTPConnectionCard({ dealerId }: { dealerId: string | null }) {
       });
       if (error) throw error;
       setUsername(data.username || null);
+      if (data.host) setSftpHost(data.host);
       setChecked(true);
-    } catch {
-      toast.error("Failed to check credentials");
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? "Failed to check credentials";
+      toast.error(message);
     } finally {
       setChecking(false);
     }
@@ -145,18 +162,23 @@ export function SFTPConnectionCard({ dealerId }: { dealerId: string | null }) {
       if (error) throw error;
       setCreds(data.credentials);
       setUsername(data.credentials.username);
+      if (data.credentials?.host) setSftpHost(data.credentials.host);
       toast.success("New credentials generated!");
-    } catch {
-      toast.error("Failed to generate credentials");
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? "Failed to generate credentials";
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Auto-check on mount
-  if (!checked && !checking && dealerId) {
-    checkCreds();
-  }
+  useEffect(() => {
+    if (!checked && dealerId) {
+      checkCreds();
+    }
+  }, [dealerId, checked]);
+
+  const canRegenerate = userRole === "admin" || userRole === "super_admin";
 
   return (
     <div className="glass-card rounded-xl p-6 space-y-4">
@@ -184,7 +206,7 @@ export function SFTPConnectionCard({ dealerId }: { dealerId: string | null }) {
         </div>
       ) : username ? (
         <div className="space-y-3">
-          <CopyField label="SFTP Host" value="us-east-1.sftpcloud.io" />
+          <CopyField label="SFTP Host" value={sftpHost} />
           <CopyField label="Port" value="22" />
           <CopyField label="Username" value={username} />
 
@@ -208,28 +230,42 @@ export function SFTPConnectionCard({ dealerId }: { dealerId: string | null }) {
             </div>
           )}
 
-          <button
-            onClick={regenerate}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive px-4 py-2 text-xs font-medium hover:bg-destructive/20 transition-colors disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Regenerate Credentials
-          </button>
+          {canRegenerate ? (
+            <button
+              onClick={regenerate}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive px-4 py-2 text-xs font-medium hover:bg-destructive/20 transition-colors disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Regenerate Credentials
+            </button>
+          ) : (
+            <button disabled title="Admin access required" className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive px-4 py-2 text-xs font-medium opacity-40 cursor-not-allowed">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Regenerate Credentials
+            </button>
+          )}
         </div>
       ) : (
         <div className="text-center py-6 space-y-3">
           <KeyRound className="h-8 w-8 text-muted-foreground mx-auto opacity-30" />
           <p className="text-sm text-muted-foreground">No SFTP credentials configured yet.</p>
           <p className="text-xs text-muted-foreground">Contact your admin to generate credentials, or click below.</p>
-          <button
-            onClick={regenerate}
-            disabled={loading}
-            className="flex items-center gap-2 mx-auto rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-            Generate Credentials
-          </button>
+          {canRegenerate ? (
+            <button
+              onClick={regenerate}
+              disabled={loading}
+              className="flex items-center gap-2 mx-auto rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              Generate Credentials
+            </button>
+          ) : (
+            <button disabled title="Admin access required" className="flex items-center gap-2 mx-auto rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium opacity-40 cursor-not-allowed">
+              <KeyRound className="h-4 w-4" />
+              Generate Credentials
+            </button>
+          )}
         </div>
       )}
     </div>
