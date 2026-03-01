@@ -58,7 +58,6 @@ export default function AuthPage() {
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
         data: { full_name: fullName.trim() },
       },
     });
@@ -68,7 +67,7 @@ export default function AuthPage() {
       return;
     }
 
-    // If invite token present and user confirmed, accept the invite
+    // If invite token present and user has a session, accept the invite
     if (inviteToken && signupData.session) {
       try {
         const { data: result, error: invError } = await supabase.functions.invoke("accept-invite", {
@@ -81,7 +80,12 @@ export default function AuthPage() {
       } catch (e: any) {
         toast.error("Failed to accept invite", { description: e.message });
       }
+    } else if (signupData.session) {
+      // Email confirmation is disabled — user gets a session immediately
+      toast.success("Account created! Welcome to Pulse.");
+      navigate("/");
     } else {
+      // Fallback: if for some reason email confirmation is re-enabled later
       toast.success("Check your email to verify your account!");
     }
     setLoading(false);
