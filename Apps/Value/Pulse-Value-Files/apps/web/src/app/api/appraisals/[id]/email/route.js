@@ -1,16 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+}
 
 export async function POST(request, { params }) {
   try {
-    // Get auth token from request header
+    const supabase = getSupabase();
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
     const authHeader = request.headers.get("authorization");
     if (!authHeader) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });

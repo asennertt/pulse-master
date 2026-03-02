@@ -1,22 +1,51 @@
 import { createBrowserClient } from '@supabase/ssr';
 
-// Use process.env on server (SSR), import.meta.env on client
-const supabaseUrl =
-  typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_URL
-    ? process.env.NEXT_PUBLIC_SUPABASE_URL
-    : (typeof import.meta !== 'undefined' && import.meta.env?.NEXT_PUBLIC_SUPABASE_URL) || '';
+let _supabase = null;
 
-const supabaseAnonKey =
-  typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    : (typeof import.meta !== 'undefined' && import.meta.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) || '';
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    'Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.'
-  );
+function getEnvVar(name) {
+  // Try process.env first (server/SSR), then import.meta.env (client)
+  if (typeof process !== 'undefined' && process.env && process.env[name]) {
+    return process.env[name];
+  }
+  try {
+    // import.meta.env is statically replaced by Vite at build time
+    const val = import.meta.env?.[name];
+    if (val) return val;
+  } catch (e) {
+    // ignore
+  }
+  return undefined;
 }
 
-export const supabase = supabaseUrl && supabaseAnonKey
-  ? createBrowserClient(supabaseUrl, supabaseAnonKey)
-  : null;
+/**
+ * Lazy-initialized Supabase client.
+ * Defers createClient until first use so env vars are read at runtime, not module load.
+ */
+export function getSupabaseClient() {
+  if (_supabase) return _supabase;
+
+  const url = getEnvVar('NEXT_PUBLIC_SUPABASE_URL');
+  const key = getEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+
+  if (!url || !key) {
+    console.warn('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY)');
+    return null;
+  }
+
+  _supabase = createBrowserClient(url, key);
+  return _supabase;
+}
+
+// Backwards-compatible default export — lazy getter
+// Code that does `import { supabase } from '@/lib/supabase'` will get the client
+// at first property access rather than at module load time.
+let _proxy = null;
+export const supabase = new Proxy({}, {
+  get(target, prop) {
+    if (!_proxy) _proxy = getSupabaseClient();
+    if (!_proxy) {
+      throw new Error('Supabase client not initialized — missing env vars');
+    }
+    return _proxy[prop];
+  }
+});
