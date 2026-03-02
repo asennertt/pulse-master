@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [splashUserName, setSplashUserName] = useState<string | undefined>(undefined);
 
   // Guard: tracks in-flight init promise to prevent duplicate RPC calls
-  const initPromiseRef = useRef<Promise<void> | null>(null);
+  const initPromiseRef = useRef<Promise<boolean> | null>(null);
   const initializedUserRef = useRef<string | null>(null);
   // Track whether a session existed at mount (page refresh = no splash)
   const hadSessionOnMountRef = useRef(false);
@@ -75,15 +75,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShowSplash(false);
   }, []);
 
+  const clearAuth = useCallback(() => {
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setIsSuperAdmin(false);
+    setIsDealerAdmin(false);
+    setSubscribed(false);
+    setSubscriptionTier(null);
+    setSubscriptionEnd(null);
+    setImpersonatingDealerId(null);
+    setShowSplash(false);
+    initializedUserRef.current = null;
+    initPromiseRef.current = null;
+  }, []);
+
+  // Force sign-out: clears stale/invalid session so the user sees the login form
+  const forceSignOut = useCallback(async () => {
+    console.warn("[AuthContext] Forcing sign-out due to invalid session or missing profile.");
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // signOut can fail if the session is already invalid — that's fine
+    }
+    clearAuth();
+    setLoading(false);
+  }, [clearAuth]);
+
   // 1. Optimized Initialization using the Mega-RPC
-  const initializeUserData = (userId: string): Promise<void> => {
+  // Returns true if initialization succeeded, false if the session is bad
+  const initializeUserData = (userId: string): Promise<boolean> => {
     // If already initializing for this exact user, return the in-flight promise
     if (initPromiseRef.current && initializedUserRef.current === userId) {
       return initPromiseRef.current;
     }
     initializedUserRef.current = userId;
 
-    const promise = (async () => {
+    const promise = (async (): Promise<boolean> => {
       try {
         console.log("[AuthContext] calling get_user_context for", userId);
         const { data, error } = await supabase.rpc("get_user_context", {
@@ -94,16 +122,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (error) throw error;
 
-        if (data) {
-          setProfile(data.profile as unknown as Profile);
-          setIsSuperAdmin(!!data.is_super_admin);
-          setIsDealerAdmin(!!data.is_dealer_admin);
-          console.log("[AuthContext] isDealerAdmin:", !!data.is_dealer_admin, "isSuperAdmin:", !!data.is_super_admin);
+        // If the RPC returned an error object (from the EXCEPTION handler)
+        if (data?.error) {
+          console.error("[AuthContext] get_user_context returned error:", data.error);
+          return false;
         }
 
+        // If no profile found, this user doesn't exist in the DB (deleted user / stale session)
+        if (!data?.profile) {
+          console.warn("[AuthContext] No profile found for user — session may be stale.");
+          return false;
+        }
+
+        setProfile(data.profile as unknown as Profile);
+        setIsSuperAdmin(!!data.is_super_admin);
+        setIsDealerAdmin(!!data.is_dealer_admin);
+        console.log("[AuthContext] isDealerAdmin:", !!data.is_dealer_admin, "isSuperAdmin:", !!data.is_super_admin);
+
+        // Subscription check — non-blocking, errors won't affect auth
         await checkSubscriptionForUser(userId);
+        return true;
       } catch (error) {
-        console.error("Error initializing user data:", error);
+        console.error("[AuthContext] Error initializing user data:", error);
+        return false;
       } finally {
         initPromiseRef.current = null;
       }
@@ -123,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscriptionTier(data?.product_id ? getPlanByProductId(data.product_id) : null);
       setSubscriptionEnd(data?.subscription_end ?? null);
     } catch (e) {
-      console.error("Error checking subscription:", e);
+      console.error("[AuthContext] Error checking subscription:", e);
     }
   };
 
@@ -131,21 +172,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user?.id) {
       await checkSubscriptionForUser(user.id);
     }
-  };
-
-  const clearAuth = () => {
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-    setIsSuperAdmin(false);
-    setIsDealerAdmin(false);
-    setSubscribed(false);
-    setSubscriptionTier(null);
-    setSubscriptionEnd(null);
-    setImpersonatingDealerId(null);
-    setShowSplash(false);
-    initializedUserRef.current = null;
-    initPromiseRef.current = null;
   };
 
   // 2. Auth State Listener — single path, no competing lock acquisitions
@@ -174,7 +200,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (currentSession?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
           // Fully resolve profile + roles BEFORE setting loading=false
-          await initializeUserData(currentSession.user.id);
+          const success = await initializeUserData(currentSession.user.id);
+
+          if (!success) {
+            // Profile not found or RPC failed — session is stale/invalid.
+            // Force sign-out so the user sees the clean login form.
+            await forceSignOut();
+            return; // forceSignOut already sets loading=false
+          }
 
           // Show splash only on a real sign-in, not on page refresh
           if (event === "SIGNED_IN" && !hadSessionOnMountRef.current) {
@@ -200,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         access_token: accessToken,
         refresh_token: refreshToken,
       }).catch((err) => {
-        console.error("Token relay failed:", err);
+        console.error("[AuthContext] Token relay failed:", err);
         setLoading(false);
       });
     } else {
@@ -216,7 +249,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    return () => subscription.unsubscribe();
+    // Safety net: if loading is still true after 8 seconds, something went wrong.
+    // Force loading=false so the user isn't stuck on a blank screen forever.
+    const safetyTimeout = setTimeout(() => {
+      setLoading((current) => {
+        if (current) {
+          console.warn("[AuthContext] Safety timeout: forcing loading=false after 8s");
+          return false;
+        }
+        return current;
+      });
+    }, 8000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   // 3. Subscription Polling
@@ -237,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user, session, profile, isSuperAdmin, isDealerAdmin, loading,
     impersonatingDealerId, setImpersonatingDealerId,
     activeDealerId, signOut,
-    refreshProfile: () => user ? initializeUserData(user.id) : Promise.resolve(),
+    refreshProfile: () => user ? initializeUserData(user.id).then(() => {}) : Promise.resolve(),
     subscribed, subscriptionTier, subscriptionEnd, checkSubscription,
   };
 
