@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/Contexts/AuthContext";
 import { toast } from "sonner";
 import { LogIn, UserPlus, Mail, Lock, User, Loader2, Users } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
@@ -9,6 +10,7 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get("invite");
+  const { user, loading: authLoading } = useAuth();
 
   const [mode, setMode] = useState<"login" | "signup">(inviteToken ? "signup" : "login");
   const [email, setEmail] = useState("");
@@ -18,6 +20,14 @@ export default function AuthPage() {
   const [inviteDealership, setInviteDealership] = useState<string | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+
+  // If the user is already authenticated (e.g. via cross-domain token relay
+  // from the Landing page), skip the auth form and go straight to dashboard.
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   // Validate invite token on mount
   useEffect(() => {
@@ -45,7 +55,7 @@ export default function AuthPage() {
       toast.error("Login failed", { description: error.message });
     } else {
       toast.success("Welcome back!");
-      navigate("/");
+      navigate("/dashboard");
     }
   };
 
@@ -76,20 +86,29 @@ export default function AuthPage() {
         if (invError) throw invError;
         if (result?.error) throw new Error(result.error);
         toast.success(`Joined ${result.dealership_name || "the dealership"}!`);
-        navigate("/");
+        navigate("/dashboard");
       } catch (e: any) {
         toast.error("Failed to accept invite", { description: e.message });
       }
     } else if (signupData.session) {
       // Email confirmation is disabled — user gets a session immediately
       toast.success("Account created! Welcome to Pulse.");
-      navigate("/");
+      navigate("/dashboard");
     } else {
       // Fallback: if for some reason email confirmation is re-enabled later
       toast.success("Check your email to verify your account!");
     }
     setLoading(false);
   };
+
+  // While AuthContext is still checking for token relay, show a loading spinner
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const inputCls = "w-full rounded-lg bg-secondary border border-border px-4 py-3 pl-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50";
 
