@@ -1,13 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import PDFDocument from "pdfkit";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+}
 
 export async function GET(request, { params }) {
   try {
+    const supabase = getSupabase();
+
     const authHeader = request.headers.get("authorization");
     if (!authHeader) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,7 +48,7 @@ export async function GET(request, { params }) {
     await new Promise((resolve) => {
       doc.on("end", resolve);
 
-      // Header
+      // ── Header ──────────────────────────────────────────────────────────
       doc
         .rect(0, 0, doc.page.width, 80)
         .fill("#0F172A");
@@ -76,7 +80,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(3);
 
-      // Vehicle Info
+      // ── Vehicle Info ─────────────────────────────────────────────────────
       doc
         .fillColor("#1e293b")
         .rect(50, doc.y, doc.page.width - 100, 30)
@@ -113,7 +117,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(vehicleFields.length / 2 * 1.5 + 1);
 
-      // Appraisal Value
+      // ── Appraisal Value ───────────────────────────────────────────────────
       doc
         .fillColor("#1e293b")
         .rect(50, doc.y, doc.page.width - 100, 30)
@@ -127,6 +131,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(1.5);
 
+      // Value boxes
       const values = [
         { label: "Trade-In Value", value: appraisal_result?.tradeInValue, color: "#06b6d4" },
         { label: "Retail Value", value: appraisal_result?.retailValue, color: "#10b981" },
@@ -154,7 +159,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(4);
 
-      // Market Analysis
+      // ── Market Analysis ───────────────────────────────────────────────────
       if (market_data) {
         doc
           .fillColor("#1e293b")
@@ -183,7 +188,7 @@ export async function GET(request, { params }) {
         });
       }
 
-      // Notes
+      // ── Notes ─────────────────────────────────────────────────────────────
       if (appraisal_result?.notes) {
         doc.moveDown(1);
         doc
@@ -205,7 +210,7 @@ export async function GET(request, { params }) {
           .text(appraisal_result.notes, { width: doc.page.width - 100 });
       }
 
-      // Footer
+      // ── Footer ────────────────────────────────────────────────────────────
       doc
         .rect(0, doc.page.height - 50, doc.page.width, 50)
         .fill("#0F172A");

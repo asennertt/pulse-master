@@ -1,13 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import PDFDocument from "pdfkit";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+}
 
 export async function GET(request, { params }) {
   try {
+    const supabase = getSupabase();
+
     const authHeader = request.headers.get("authorization");
     if (!authHeader) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
