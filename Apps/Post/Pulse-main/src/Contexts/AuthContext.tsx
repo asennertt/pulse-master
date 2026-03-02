@@ -17,6 +17,13 @@ function getPlanByProductId(productId: string): PlanKey | null {
   return productId ?? null;
 }
 
+// Detect whether this is a brand-new account (created within the last 30s)
+function isNewAccount(user: User): boolean {
+  if (!user.created_at) return false;
+  const createdMs = new Date(user.created_at).getTime();
+  return Date.now() - createdMs < 30_000;
+}
+
 // ---------- Context ----------
 interface AuthContextType {
   user: User | null;
@@ -59,9 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscriptionTier, setSubscriptionTier] = useState<PlanKey | null>(null);
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
 
-  // Splash screen state — only shown on fresh sign-in transitions
+  // Splash screen state
   const [showSplash, setShowSplash] = useState(false);
   const [splashUserName, setSplashUserName] = useState<string | undefined>(undefined);
+  const [splashVariant, setSplashVariant] = useState<"login" | "signup">("login");
 
   // Guard: tracks in-flight init promise to prevent duplicate RPC calls
   const initPromiseRef = useRef<Promise<boolean> | null>(null);
@@ -102,10 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, [clearAuth]);
 
-  // 1. Optimized Initialization using the Mega-RPC
   // Returns true if initialization succeeded, false if the session is bad
   const initializeUserData = (userId: string): Promise<boolean> => {
-    // If already initializing for this exact user, return the in-flight promise
     if (initPromiseRef.current && initializedUserRef.current === userId) {
       return initPromiseRef.current;
     }
@@ -113,22 +119,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const promise = (async (): Promise<boolean> => {
       try {
-        console.log("[AuthContext] calling get_user_context for", userId);
         const { data, error } = await supabase.rpc("get_user_context", {
           _user_id: userId,
         });
 
-        console.log("[AuthContext] get_user_context result:", JSON.stringify(data), "error:", error);
-
         if (error) throw error;
 
-        // If the RPC returned an error object (from the EXCEPTION handler)
         if (data?.error) {
           console.error("[AuthContext] get_user_context returned error:", data.error);
           return false;
         }
 
-        // If no profile found, this user doesn't exist in the DB (deleted user / stale session)
         if (!data?.profile) {
           console.warn("[AuthContext] No profile found for user — session may be stale.");
           return false;
@@ -137,9 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(data.profile as unknown as Profile);
         setIsSuperAdmin(!!data.is_super_admin);
         setIsDealerAdmin(!!data.is_dealer_admin);
-        console.log("[AuthContext] isDealerAdmin:", !!data.is_dealer_admin, "isSuperAdmin:", !!data.is_super_admin);
 
-        // Subscription check — non-blocking, errors won't affect auth
         await checkSubscriptionForUser(userId);
         return true;
       } catch (error) {
@@ -174,14 +173,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 2. Auth State Listener — single path, no competing lock acquisitions
   useEffect(() => {
-    // Check for cross-domain token relay from Landing page
     const params = new URLSearchParams(window.location.search);
     const accessToken = params.get("access_token");
     const refreshToken = params.get("refresh_token");
 
-    // Clean tokens from URL immediately (regardless of validity)
     if (accessToken || refreshToken) {
       const url = new URL(window.location.href);
       url.searchParams.delete("access_token");
@@ -189,30 +185,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.history.replaceState({}, "", url.toString());
     }
 
-    // Set up the auth state listener FIRST — this is the single source of truth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        console.log("[AuthContext] onAuthStateChange:", event, currentSession?.user?.id);
-
-        // Update state synchronously
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
 
         if (currentSession?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
-          // Fully resolve profile + roles BEFORE setting loading=false
           const success = await initializeUserData(currentSession.user.id);
 
           if (!success) {
-            // Profile not found or RPC failed — session is stale/invalid.
-            // Force sign-out so the user sees the clean login form.
             await forceSignOut();
-            return; // forceSignOut already sets loading=false
+            return;
           }
 
-          // Show splash only on a real sign-in, not on page refresh
+          // Show splash only on a real sign-in/sign-up, not on page refresh
           if (event === "SIGNED_IN" && !hadSessionOnMountRef.current) {
             const name = currentSession.user.user_metadata?.full_name as string | undefined;
+            const variant = isNewAccount(currentSession.user) ? "signup" : "login";
             setSplashUserName(name);
+            setSplashVariant(variant);
             setShowSplash(true);
           }
         }
@@ -221,14 +212,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearAuth();
         }
 
-        console.log("[AuthContext] setting loading=false after event:", event);
         setLoading(false);
       }
     );
 
-    // Now handle the session initialization
     if (accessToken && refreshToken) {
-      // Cross-domain handoff: set session from Landing page tokens
       supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
@@ -237,7 +225,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       });
     } else {
-      // Normal boot: getSession triggers onAuthStateChange with INITIAL_SESSION
       supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
         if (existingSession) {
           hadSessionOnMountRef.current = true;
@@ -245,12 +232,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!existingSession) {
           setLoading(false);
         }
-        // If session exists, onAuthStateChange will fire and handle it
       });
     }
 
-    // Safety net: if loading is still true after 8 seconds, something went wrong.
-    // Force loading=false so the user isn't stuck on a blank screen forever.
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
@@ -267,7 +251,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // 3. Subscription Polling
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (user) {
@@ -291,10 +274,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {/* Splash overlay — shown on fresh sign-in, dismissed after 2.5s */}
       {showSplash && (
         <LoginSuccessSplash
           userName={splashUserName}
+          variant={splashVariant}
           onComplete={handleSplashComplete}
         />
       )}

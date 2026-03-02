@@ -14,9 +14,7 @@ import { LoginSuccessSplash } from './LoginSuccessSplash';
 type AuthContextType = {
   user: User | null;
   session: Session | null;
-  /** True while the initial session check is in flight */
   loading: boolean;
-  /** True while the login-success splash is showing */
   showSplash: boolean;
   signOut: () => Promise<void>;
 };
@@ -29,15 +27,21 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+// Detect whether this is a brand-new account (created within the last 30s)
+function isNewAccount(user: User): boolean {
+  if (!user.created_at) return false;
+  const createdMs = new Date(user.created_at).getTime();
+  return Date.now() - createdMs < 30_000;
+}
+
 export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(false);
+  const [splashVariant, setSplashVariant] = useState<'login' | 'signup'>('login');
 
-  // Track whether a session already existed when the provider first mounted.
   const hadSessionOnMount = useRef(false);
-  // Track whether the initial session check has completed.
   const initialSessionChecked = useRef(false);
 
   const handleSplashComplete = useCallback(() => {
@@ -59,7 +63,6 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       const refreshToken = params.get('refresh_token');
 
       if (accessToken && refreshToken) {
-        // Clean the URL immediately
         const url = new URL(window.location.href);
         url.searchParams.delete('access_token');
         url.searchParams.delete('refresh_token');
@@ -71,15 +74,14 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
             if (newSession) {
               setSession(newSession);
               setUser(newSession.user);
-              // Fresh login via relay — show splash
+              const variant = isNewAccount(newSession.user) ? 'signup' : 'login';
+              setSplashVariant(variant);
               setShowSplash(true);
               initialSessionChecked.current = true;
             }
             setLoading(false);
           })
           .catch(() => setLoading(false));
-        // Don't set up getSession below — we're handling it here
-        // But still set up the auth state listener
 
         const {
           data: { subscription },
@@ -92,7 +94,6 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
           }
         });
 
-        // Safety net
         const safetyTimeout = setTimeout(() => {
           setLoading((current) => {
             if (current) {
@@ -122,12 +123,10 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // ── Listen for subsequent auth state changes (sign-in / sign-out) ────────
+    // ── Listen for subsequent auth state changes ────────────────────────
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log('[AuthProvider] onAuthStateChange:', event, newSession?.user?.id);
-
       setSession(newSession);
       setUser(newSession?.user ?? null);
 
@@ -136,18 +135,19 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Show splash on real sign-in transitions (not page refresh hydration)
-      // This covers both sign-in and account creation (both fire SIGNED_IN)
+      // Show splash on real sign-in/sign-up (not page refresh)
       if (
         event === 'SIGNED_IN' &&
         initialSessionChecked.current &&
-        !hadSessionOnMount.current
+        !hadSessionOnMount.current &&
+        newSession?.user
       ) {
+        const variant = isNewAccount(newSession.user) ? 'signup' : 'login';
+        setSplashVariant(variant);
         setShowSplash(true);
       }
     });
 
-    // Safety net: never leave the user on a blank screen
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
@@ -174,10 +174,10 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ user, session, loading, showSplash, signOut }}>
-      {/* Splash overlay — shown on fresh sign-in / sign-up, dismissed after 2.5s */}
       {showSplash && (
         <LoginSuccessSplash
           userName={userName}
+          variant={splashVariant}
           onComplete={handleSplashComplete}
         />
       )}

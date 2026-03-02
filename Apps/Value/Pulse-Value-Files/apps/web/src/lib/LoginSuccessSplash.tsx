@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 interface LoginSuccessSplashProps {
   userName?: string;
+  variant?: "login" | "signup";
   onComplete: () => void;
 }
 
@@ -16,9 +17,7 @@ function PulseMark() {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      {/* Rounded square background */}
       <rect width="44" height="44" rx="10" fill="currentColor" className="text-primary" />
-      {/* Stylised "P" */}
       <text
         x="22"
         y="31"
@@ -34,15 +33,27 @@ function PulseMark() {
   );
 }
 
-export function LoginSuccessSplash({ userName, onComplete }: LoginSuccessSplashProps) {
+export function LoginSuccessSplash({ userName, variant = "login", onComplete }: LoginSuccessSplashProps) {
   useEffect(() => {
     const timer = setTimeout(onComplete, 2500);
     return () => clearTimeout(timer);
   }, [onComplete]);
 
-  const greeting = userName
-    ? `Welcome back, ${userName.split(" ")[0]}`
-    : "Welcome back";
+  const firstName = userName?.split(" ")[0];
+
+  const heading =
+    variant === "signup"
+      ? firstName
+        ? `Welcome, ${firstName}`
+        : "Welcome to Pulse"
+      : firstName
+      ? `Welcome back, ${firstName}`
+      : "Welcome back";
+
+  const subtitle =
+    variant === "signup"
+      ? "Your account has been created"
+      : "Taking you to your dashboard\u2026";
 
   return (
     <>
@@ -73,6 +84,12 @@ export function LoginSuccessSplash({ userName, onComplete }: LoginSuccessSplashP
           50%       { opacity: 0.32; transform: scale(1.12); }
         }
 
+        @keyframes vls-check-draw {
+          0%   { stroke-dashoffset: 24; opacity: 0; }
+          40%  { opacity: 1; }
+          100% { stroke-dashoffset: 0; opacity: 1; }
+        }
+
         .vls-root {
           animation: vls-fade-in 0.3s ease both;
         }
@@ -100,12 +117,21 @@ export function LoginSuccessSplash({ userName, onComplete }: LoginSuccessSplashP
         .vls-dot-1 { animation: vls-dot-bounce 1.2s ease-in-out 1.0s infinite; }
         .vls-dot-2 { animation: vls-dot-bounce 1.2s ease-in-out 1.15s infinite; }
         .vls-dot-3 { animation: vls-dot-bounce 1.2s ease-in-out 1.3s infinite; }
+
+        .vls-check {
+          animation: vls-text-slide-up 0.45s ease 0.85s both;
+        }
+        .vls-check svg path {
+          stroke-dasharray: 24;
+          stroke-dashoffset: 24;
+          animation: vls-check-draw 0.5s ease 1.1s forwards;
+        }
       `}</style>
 
       <div
         className="vls-root fixed inset-0 z-50 flex flex-col items-center justify-center bg-background"
         aria-live="polite"
-        aria-label="Logging you in"
+        aria-label={variant === "signup" ? "Account created" : "Logging you in"}
       >
         {/* Ambient glow blobs */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -139,19 +165,35 @@ export function LoginSuccessSplash({ userName, onComplete }: LoginSuccessSplashP
               Pulse Value
             </p>
             <h1 className="vls-text text-2xl font-semibold tracking-tight text-foreground" style={{ animationDelay: "0.6s" }}>
-              {greeting}
+              {heading}
             </h1>
             <p className="vls-sub text-sm text-muted-foreground">
-              Taking you to your dashboard…
+              {subtitle}
             </p>
           </div>
 
-          {/* Animated dots */}
-          <div className="vls-dots flex items-center gap-2">
-            <span className="vls-dot-1 block h-2 w-2 rounded-full bg-primary" />
-            <span className="vls-dot-2 block h-2 w-2 rounded-full bg-primary" />
-            <span className="vls-dot-3 block h-2 w-2 rounded-full bg-primary" />
-          </div>
+          {/* Animated dots for login, checkmark for signup */}
+          {variant === "signup" ? (
+            <div className="vls-check flex items-center justify-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/15 ring-1 ring-green-500/30">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path
+                    d="M4 10.5L8 14.5L16 6.5"
+                    stroke="hsl(142, 71%, 45%)"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            </div>
+          ) : (
+            <div className="vls-dots flex items-center gap-2">
+              <span className="vls-dot-1 block h-2 w-2 rounded-full bg-primary" />
+              <span className="vls-dot-2 block h-2 w-2 rounded-full bg-primary" />
+              <span className="vls-dot-3 block h-2 w-2 rounded-full bg-primary" />
+            </div>
+          )}
         </div>
       </div>
     </>
