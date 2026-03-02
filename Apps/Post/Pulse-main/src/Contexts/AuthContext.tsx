@@ -59,40 +59,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscriptionTier, setSubscriptionTier] = useState<PlanKey | null>(null);
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
 
-  // Guard against double-initialization from competing auth paths
-  const initializingRef = useRef(false);
+  // Guard: tracks whether initializeUserData has fully completed at least once.
+  // This prevents setLoading(false) from running before the first RPC finishes.
+  const initPromiseRef = useRef<Promise<void> | null>(null);
   const initializedUserRef = useRef<string | null>(null);
 
   const activeDealerId = impersonatingDealerId || profile?.dealership_id || null;
 
   // 1. Optimized Initialization using the Mega-RPC
-  const initializeUserData = async (userId: string) => {
-    // Prevent duplicate concurrent calls for the same user
-    if (initializingRef.current && initializedUserRef.current === userId) {
-      return;
+  const initializeUserData = (userId: string): Promise<void> => {
+    // If already initializing for this exact user, return the in-flight promise
+    if (initPromiseRef.current && initializedUserRef.current === userId) {
+      return initPromiseRef.current;
     }
-    initializingRef.current = true;
     initializedUserRef.current = userId;
 
-    try {
-      const { data, error } = await supabase.rpc("get_user_context", {
-        _user_id: userId,
-      });
+    const promise = (async () => {
+      try {
+        console.log("[AuthContext] calling get_user_context for", userId);
+        const { data, error } = await supabase.rpc("get_user_context", {
+          _user_id: userId,
+        });
 
-      if (error) throw error;
+        console.log("[AuthContext] get_user_context result:", JSON.stringify(data), "error:", error);
 
-      if (data) {
-        setProfile(data.profile as unknown as Profile);
-        setIsSuperAdmin(!!data.is_super_admin);
-        setIsDealerAdmin(!!data.is_dealer_admin);
+        if (error) throw error;
+
+        if (data) {
+          setProfile(data.profile as unknown as Profile);
+          setIsSuperAdmin(!!data.is_super_admin);
+          setIsDealerAdmin(!!data.is_dealer_admin);
+          console.log("[AuthContext] isDealerAdmin set to:", !!data.is_dealer_admin);
+        } else {
+          console.warn("[AuthContext] get_user_context returned null data");
+        }
+
+        await checkSubscriptionForUser(userId);
+      } catch (error) {
+        console.error("Error initializing user data:", error);
+      } finally {
+        initPromiseRef.current = null;
       }
+    })();
 
-      await checkSubscriptionForUser(userId);
-    } catch (error) {
-      console.error("Error initializing user data:", error);
-    } finally {
-      initializingRef.current = false;
-    }
+    initPromiseRef.current = promise;
+    return promise;
   };
 
   const checkSubscriptionForUser = async (userId: string) => {
@@ -126,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSubscriptionEnd(null);
     setImpersonatingDealerId(null);
     initializedUserRef.current = null;
+    initPromiseRef.current = null;
   };
 
   // 2. Auth State Listener — single path, no competing lock acquisitions
@@ -146,11 +158,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Set up the auth state listener FIRST — this is the single source of truth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
+        console.log("[AuthContext] onAuthStateChange:", event, currentSession?.user?.id);
+
         // Update state synchronously
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
 
         if (currentSession?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
+          // IMPORTANT: await the full initialization before setting loading=false
           await initializeUserData(currentSession.user.id);
         }
 
@@ -158,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearAuth();
         }
 
+        console.log("[AuthContext] setting loading=false after event:", event);
         setLoading(false);
       }
     );
