@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 /**
- * useAuth — lightweight hook that returns the current Supabase session & user.
+ * useAuth — lightweight hook that returns the current Supabase session & user,
+ * plus sign-in, sign-up, and sign-out helpers.
  *
  * Usage:
- *   const { user, session, loading, signOut } = useAuth();
+ *   const { user, session, loading, signOut, signInWithCredentials, signUpWithCredentials } = useAuth();
  */
 export function useAuth() {
   const [session, setSession] = useState(null);
@@ -31,13 +32,48 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
+  const signOut = async (options = {}) => {
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
+    if (options.redirect !== false) {
+      window.location.href = options.callbackUrl || '/';
+    }
   };
 
-  return { session, user, loading, signOut };
+  const signInWithCredentials = async ({ email, password, callbackUrl, redirect } = {}) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      throw new Error(error.message === 'Invalid login credentials' ? 'CredentialsSignin' : error.message);
+    }
+    setSession(data.session);
+    setUser(data.user);
+    if (redirect !== false && callbackUrl) {
+      window.location.href = callbackUrl;
+    }
+    return data;
+  };
+
+  const signUpWithCredentials = async ({ email, password, callbackUrl, redirect } = {}) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    if (error) {
+      throw new Error(error.message.includes('already registered') ? 'EmailCreateAccount' : error.message);
+    }
+    setSession(data.session);
+    setUser(data.user);
+    if (redirect !== false && callbackUrl) {
+      window.location.href = callbackUrl;
+    }
+    return data;
+  };
+
+  return { session, user, loading, signOut, signInWithCredentials, signUpWithCredentials };
 }
 
 /**
@@ -57,3 +93,6 @@ export function useRequireAuth(redirectTo = '/account/signin') {
 
   return { user, loading };
 }
+
+// Default export for pages that use: import useAuth from "@/utils/useAuth"
+export default useAuth;
