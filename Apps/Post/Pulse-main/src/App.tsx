@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "./Contexts/AuthContext";
 import { ProtectedRoute } from "./Contexts/ProtectedRoute";
 
@@ -12,6 +12,19 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import NotFound from "./pages/NotFound";
 
+/**
+ * Redirects / → /auth while preserving all query-string parameters.
+ * This is critical for the cross-domain auth flow: the Landing page
+ * sends access_token + refresh_token as query params, and a plain
+ * <Navigate to="/auth" replace /> would strip them.
+ */
+function RedirectToAuth() {
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString();
+  const target = qs ? `/auth?${qs}` : "/auth";
+  return <Navigate to={target} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -19,7 +32,7 @@ function App() {
         <Routes>
           {/* PUBLIC ROUTES */}
           <Route path="/auth" element={<Auth />} />
-          <Route path="/" element={<Navigate to="/auth" replace />} />
+          <Route path="/" element={<RedirectToAuth />} />
 
           {/* PROTECTED ROUTES */}
           <Route
