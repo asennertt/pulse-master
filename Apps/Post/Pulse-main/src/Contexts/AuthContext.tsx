@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -59,10 +59,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscriptionTier, setSubscriptionTier] = useState<PlanKey | null>(null);
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
 
+  // Guard against double-initialization from competing auth paths
+  const initializingRef = useRef(false);
+  const initializedUserRef = useRef<string | null>(null);
+
   const activeDealerId = impersonatingDealerId || profile?.dealership_id || null;
 
   // 1. Optimized Initialization using the Mega-RPC
   const initializeUserData = async (userId: string) => {
+    // Prevent duplicate concurrent calls for the same user
+    if (initializingRef.current && initializedUserRef.current === userId) {
+      return;
+    }
+    initializingRef.current = true;
+    initializedUserRef.current = userId;
+
     try {
       const { data, error } = await supabase.rpc("get_user_context", {
         _user_id: userId,
@@ -76,17 +87,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsDealerAdmin(!!data.is_dealer_admin);
       }
 
-      await checkSubscription();
+      await checkSubscriptionForUser(userId);
     } catch (error) {
       console.error("Error initializing user data:", error);
+    } finally {
+      initializingRef.current = false;
     }
   };
 
-  const checkSubscription = async () => {
+  const checkSubscriptionForUser = async (userId: string) => {
     try {
-      // Use RPC function (stub returns subscribed: false until Stripe is integrated)
       const { data, error } = await supabase.rpc("check_subscription", {
-        _user_id: user?.id ?? null,
+        _user_id: userId,
       });
       if (error) throw error;
       setSubscribed(data?.subscribed ?? false);
@@ -94,6 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscriptionEnd(data?.subscription_end ?? null);
     } catch (e) {
       console.error("Error checking subscription:", e);
+    }
+  };
+
+  const checkSubscription = async () => {
+    if (user?.id) {
+      await checkSubscriptionForUser(user.id);
     }
   };
 
@@ -107,65 +125,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSubscriptionTier(null);
     setSubscriptionEnd(null);
     setImpersonatingDealerId(null);
+    initializedUserRef.current = null;
   };
 
-  // 2. Auth State Listener (with cross-domain token relay from Landing page)
+  // 2. Auth State Listener — single path, no competing lock acquisitions
   useEffect(() => {
-    // Check for token relay from Landing page (access_token/refresh_token in URL params)
+    // Check for cross-domain token relay from Landing page
     const params = new URLSearchParams(window.location.search);
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
 
-    if (accessToken && refreshToken) {
-      // Cross-domain handoff: set session from Landing page tokens
-      supabase.auth
-        .setSession({ access_token: accessToken, refresh_token: refreshToken })
-        .then(({ data: { session: relayedSession } }) => {
-          if (relayedSession) {
-            setSession(relayedSession);
-            setUser(relayedSession.user);
-            // Clean the URL so tokens aren't visible/bookmarkable
-            const url = new URL(window.location.href);
-            url.searchParams.delete('access_token');
-            url.searchParams.delete('refresh_token');
-            window.history.replaceState({}, '', url.toString());
-            initializeUserData(relayedSession.user.id).finally(() => setLoading(false));
-          } else {
-            setLoading(false);
-          }
-        })
-        .catch(() => setLoading(false));
-    } else {
-      // Normal session check (no relay tokens)
-      supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-        if (initialSession) {
-          setSession(initialSession);
-          setUser(initialSession.user);
-          initializeUserData(initialSession.user.id).finally(() => setLoading(false));
-        } else {
-          setLoading(false);
-        }
-      });
+    // Clean tokens from URL immediately (regardless of validity)
+    if (accessToken || refreshToken) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("access_token");
+      url.searchParams.delete("refresh_token");
+      window.history.replaceState({}, "", url.toString());
     }
 
+    // Set up the auth state listener FIRST — this is the single source of truth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
+        // Update state synchronously
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (currentSession?.user) {
-            await initializeUserData(currentSession.user.id);
-          }
+        if (currentSession?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
+          await initializeUserData(currentSession.user.id);
         }
 
-        if (event === 'SIGNED_OUT') {
+        if (event === "SIGNED_OUT") {
           clearAuth();
         }
 
         setLoading(false);
       }
     );
+
+    // Now handle the session initialization
+    if (accessToken && refreshToken) {
+      // Cross-domain handoff: set session from Landing page tokens
+      // This will trigger onAuthStateChange with SIGNED_IN, which handles everything
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }).catch((err) => {
+        console.error("Token relay failed:", err);
+        setLoading(false);
+      });
+    } else {
+      // Normal boot: getSession triggers onAuthStateChange with INITIAL_SESSION
+      // If no session exists, we need to stop loading
+      supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+        if (!existingSession) {
+          setLoading(false);
+        }
+        // If session exists, onAuthStateChange will fire and handle it
+      });
+    }
 
     return () => subscription.unsubscribe();
   }, []);
@@ -174,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (user) {
-      interval = setInterval(checkSubscription, 60000);
+      interval = setInterval(() => checkSubscriptionForUser(user.id), 60000);
     }
     return () => clearInterval(interval);
   }, [user]);
