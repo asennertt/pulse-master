@@ -70,8 +70,8 @@ export default function AuthPage() {
     // If invite token present and user has a session, accept the invite
     if (inviteToken && signupData.session) {
       try {
-        const { data: result, error: invError } = await supabase.functions.invoke("accept-invite", {
-          body: { token: inviteToken },
+        const { data: result, error: invError } = await supabase.rpc("accept_invite", {
+          _token: inviteToken,
         });
         if (invError) throw invError;
         if (result?.error) throw new Error(result.error);

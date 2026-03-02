@@ -84,11 +84,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkSubscription = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke("check-subscription");
+      // Use RPC function (stub returns subscribed: false until Stripe is integrated)
+      const { data, error } = await supabase.rpc("check_subscription", {
+        _user_id: user?.id ?? null,
+      });
       if (error) throw error;
-      setSubscribed(data.subscribed ?? false);
-      setSubscriptionTier(data.product_id ? getPlanByProductId(data.product_id) : null);
-      setSubscriptionEnd(data.subscription_end ?? null);
+      setSubscribed(data?.subscribed ?? false);
+      setSubscriptionTier(data?.product_id ? getPlanByProductId(data.product_id) : null);
+      setSubscriptionEnd(data?.subscription_end ?? null);
     } catch (e) {
       console.error("Error checking subscription:", e);
     }
@@ -106,17 +109,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setImpersonatingDealerId(null);
   };
 
-  // 2. Auth State Listener
+  // 2. Auth State Listener (with cross-domain token relay from Landing page)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      if (initialSession) {
-        setSession(initialSession);
-        setUser(initialSession.user);
-        initializeUserData(initialSession.user.id).finally(() => setLoading(false));
-      } else {
-        setLoading(false);
-      }
-    });
+    // Check for token relay from Landing page (access_token/refresh_token in URL params)
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+
+    if (accessToken && refreshToken) {
+      // Cross-domain handoff: set session from Landing page tokens
+      supabase.auth
+        .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ data: { session: relayedSession } }) => {
+          if (relayedSession) {
+            setSession(relayedSession);
+            setUser(relayedSession.user);
+            // Clean the URL so tokens aren't visible/bookmarkable
+            const url = new URL(window.location.href);
+            url.searchParams.delete('access_token');
+            url.searchParams.delete('refresh_token');
+            window.history.replaceState({}, '', url.toString());
+            initializeUserData(relayedSession.user.id).finally(() => setLoading(false));
+          } else {
+            setLoading(false);
+          }
+        })
+        .catch(() => setLoading(false));
+    } else {
+      // Normal session check (no relay tokens)
+      supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+        if (initialSession) {
+          setSession(initialSession);
+          setUser(initialSession.user);
+          initializeUserData(initialSession.user.id).finally(() => setLoading(false));
+        } else {
+          setLoading(false);
+        }
+      });
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
