@@ -18,8 +18,9 @@ export default function Page() {
     if (user) {
       navigate('/dashboard', { replace: true });
     } else {
-      // Redirect to Landing page for authentication
-      window.location.href = import.meta.env.NEXT_PUBLIC_PULSE_LANDING_URL || 'https://pulse.lotlyauto.com';
+      // Redirect to Landing page auth with mode=value so it redirects back after login
+      const landingBase = import.meta.env.NEXT_PUBLIC_PULSE_LANDING_URL || 'https://pulse.lotlyauto.com';
+      window.location.href = `${landingBase}/auth?mode=value`;
     }
   }, [user, loading, navigate]);
 
