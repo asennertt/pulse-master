@@ -43,7 +43,21 @@ const redirectToProduct = async (mode: string | null) => {
 };
 
 const Auth = () => {
-  const [isSignUp, setIsSignUp] = useState(true);
+  const [searchParams] = useSearchParams();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // URL Parameters
+  const selectedPlan = searchParams.get("plan");
+  const mode = searchParams.get("mode"); // 'post', 'value', or 'both'
+  const inviteToken = searchParams.get("invite");
+  const view = searchParams.get("view"); // 'login' or 'signup'
+
+  // Default: signup if coming from landing (no mode), login if coming from Post/Value
+  const [isSignUp, setIsSignUp] = useState(
+    inviteToken ? true : view === "login" ? false : view === "signup" ? true : !mode
+  );
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -52,16 +66,8 @@ const Auth = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [inviteDealership, setInviteDealership] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { toast } = useToast();
 
-  // URL Parameters
-  const selectedPlan = searchParams.get("plan");
-  const mode = searchParams.get("mode"); // 'post', 'value', or 'both'
-  const inviteToken = searchParams.get("invite");
-
-  // If there's an invite token, default to signup mode
+  // If there's an invite token, force signup mode
   useEffect(() => {
     if (inviteToken) setIsSignUp(true);
   }, [inviteToken]);
@@ -98,10 +104,8 @@ const Auth = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session) {
-          // Try to redirect to the correct product
           const redirected = await redirectToProduct(mode);
           if (!redirected) {
-            // No mode specified or redirect failed — stay on landing
             navigate("/");
           }
         }
@@ -145,7 +149,7 @@ const Auth = () => {
             data: {
               full_name: fullName,
               dealership_name: dealershipName,
-              selected_plan: selectedPlan,
+              selected_plan: selectedPlan || mode || "post",
               terminal_mode: mode,
             },
           },
@@ -271,7 +275,7 @@ const Auth = () => {
                       required
                     />
                   </div>
-                  {/* Only show dealership field if NOT joining via invite (invite already has one) */}
+                  {/* Only show dealership field if NOT joining via invite */}
                   {!inviteToken && (
                     <div className="space-y-1.5">
                       <Label htmlFor="dealership" className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Dealership Name</Label>
@@ -315,7 +319,7 @@ const Auth = () => {
                 />
               </div>
 
-              {/* Terms & Privacy — only on signup */}
+              {/* Terms & Privacy \u2014 only on signup */}
               {isSignUp && (
                 <div className="space-y-3 mt-1">
                   <label className="flex items-start gap-2.5 cursor-pointer">

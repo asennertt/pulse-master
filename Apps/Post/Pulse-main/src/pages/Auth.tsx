@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
 
 /**
- * Auth page — thin redirect layer.
+ * Auth page \u2014 thin redirect layer.
  *
  * If the user arrives with access_token + refresh_token query params
  * (from the Landing page cross-domain relay), AuthContext handles the
@@ -25,7 +25,7 @@ export default function AuthPage() {
     // If user is authenticated, AuthContext will trigger navigation to /dashboard.
     if (user) return;
 
-    // No tokens in URL means the user navigated here directly — redirect to Landing auth
+    // No tokens in URL means the user navigated here directly \u2014 redirect to Landing auth
     const accessToken = searchParams.get("access_token");
     const refreshToken = searchParams.get("refresh_token");
 
@@ -37,9 +37,14 @@ export default function AuthPage() {
       const landingUrl = new URL(`${landingBase}/auth`);
       landingUrl.searchParams.set("mode", "post");
 
-      // Forward invite token if present
+      // Forward invite token if present (invite = signup flow)
       const invite = searchParams.get("invite");
-      if (invite) landingUrl.searchParams.set("invite", invite);
+      if (invite) {
+        landingUrl.searchParams.set("invite", invite);
+      } else {
+        // No invite means returning user \u2014 show login by default
+        landingUrl.searchParams.set("view", "login");
+      }
 
       // Forward plan if present
       const plan = searchParams.get("plan");
@@ -51,7 +56,6 @@ export default function AuthPage() {
   }, [authLoading, user, searchParams]);
 
   // Show a loading screen while AuthContext resolves the session
-  // (either from tokens in URL or while redirecting to Landing)
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center space-y-4">

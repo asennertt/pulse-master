@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { useSupabaseAuth } from '@/lib/supabase-auth-provider';
 
 /**
- * Root page — redirects based on auth state.
+ * Root page \u2014 redirects based on auth state.
  * The SupabaseAuthProvider in root.tsx already handles token relay
  * from the Landing page (access_token/refresh_token in URL params).
  * This page just checks if the user is authenticated and redirects.
@@ -18,9 +18,9 @@ export default function Page() {
     if (user) {
       navigate('/dashboard', { replace: true });
     } else {
-      // Redirect to Landing page auth with mode=value so it redirects back after login
+      // Redirect to Landing page auth with mode=value and view=login
       const landingBase = import.meta.env.NEXT_PUBLIC_PULSE_LANDING_URL || 'https://pulse.lotlyauto.com';
-      window.location.href = `${landingBase}/auth?mode=value`;
+      window.location.href = `${landingBase}/auth?mode=value&view=login`;
     }
   }, [user, loading, navigate]);
 
