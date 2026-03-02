@@ -14,12 +14,12 @@ import pulsePostLogo from "@/assets/pulse-post-logo.png";
 import pulseValueLogo from "@/assets/pulse-value-logo.png";
 
 /**
- * Product Railway URLs.
- * Pull from env vars set in Railway.
+ * Product URLs.
+ * Pull from env vars set in Cloudflare Pages / Railway.
  */
 const PRODUCT_URLS: Record<string, string> = {
-  post: import.meta.env.VITE_PULSE_POST_URL || "https://pulse-post.up.railway.app",
-  value: import.meta.env.VITE_PULSE_VALUE_URL || "https://pulse-value.up.railway.app",
+  post: import.meta.env.VITE_PULSE_POST_URL || "https://post.pulse.lotlyauto.com",
+  value: import.meta.env.VITE_PULSE_VALUE_URL || "https://pulse-value-production.up.railway.app",
 };
 
 /**
