@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/Contexts/AuthContext";
 import { toast } from "sonner";
 import { LogIn, UserPlus, Mail, Lock, User, Loader2, Users } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
+import LoginSuccessSplash from "@/components/LoginSuccessSplash";
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -21,13 +22,28 @@ export default function AuthPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
 
-  // If the user is already authenticated (e.g. via cross-domain token relay
-  // from the Landing page), skip the auth form and go straight to dashboard.
+  // Splash state
+  const [showSplash, setShowSplash] = useState(false);
+  const [splashUserName, setSplashUserName] = useState<string | undefined>(undefined);
+  // Track whether splash has already been shown for this session check,
+  // so page refreshes (where user is already set) skip the splash.
+  const [hasShownSplash, setHasShownSplash] = useState(false);
+
+  // Cross-domain token relay: user arrives already authenticated (e.g. from Landing page).
+  // Show a brief splash before navigating so the transition feels intentional.
   useEffect(() => {
-    if (!authLoading && user) {
-      navigate("/dashboard", { replace: true });
+    if (!authLoading && user && !showSplash && !hasShownSplash) {
+      const name = user.user_metadata?.full_name as string | undefined;
+      setSplashUserName(name);
+      setHasShownSplash(true);
+      setShowSplash(true);
     }
-  }, [authLoading, user, navigate]);
+  }, [authLoading, user, showSplash, hasShownSplash]);
+
+  // Called when the splash animation finishes
+  const handleSplashComplete = useCallback(() => {
+    navigate("/dashboard", { replace: true });
+  }, [navigate]);
 
   // Validate invite token on mount
   useEffect(() => {
@@ -49,13 +65,16 @@ export default function AuthPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error("Login failed", { description: error.message });
     } else {
-      toast.success("Welcome back!");
-      navigate("/dashboard");
+      // Derive display name from user metadata if available
+      const name = data.user?.user_metadata?.full_name as string | undefined;
+      setSplashUserName(name);
+      setHasShownSplash(true);
+      setShowSplash(true);
     }
   };
 
@@ -86,14 +105,18 @@ export default function AuthPage() {
         if (invError) throw invError;
         if (result?.error) throw new Error(result.error);
         toast.success(`Joined ${result.dealership_name || "the dealership"}!`);
-        navigate("/dashboard");
+        setSplashUserName(fullName.trim());
+        setHasShownSplash(true);
+        setShowSplash(true);
       } catch (e: any) {
         toast.error("Failed to accept invite", { description: e.message });
       }
     } else if (signupData.session) {
       // Email confirmation is disabled — user gets a session immediately
       toast.success("Account created! Welcome to Pulse.");
-      navigate("/dashboard");
+      setSplashUserName(fullName.trim());
+      setHasShownSplash(true);
+      setShowSplash(true);
     } else {
       // Fallback: if for some reason email confirmation is re-enabled later
       toast.success("Check your email to verify your account!");
@@ -107,6 +130,16 @@ export default function AuthPage() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
+    );
+  }
+
+  // Show splash overlay (covers the auth form underneath)
+  if (showSplash) {
+    return (
+      <LoginSuccessSplash
+        userName={splashUserName}
+        onComplete={handleSplashComplete}
+      />
     );
   }
 
