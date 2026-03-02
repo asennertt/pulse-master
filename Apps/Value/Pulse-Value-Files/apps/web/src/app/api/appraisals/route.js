@@ -1,6 +1,3 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/utils/authOptions";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -10,22 +7,28 @@ const supabase = createClient(
 
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { data, error } = await supabase
       .from("appraisals")
       .select("*")
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    return NextResponse.json(data);
+    return Response.json(data);
   } catch (error) {
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to fetch appraisals" },
       { status: 500 },
     );
@@ -34,9 +37,15 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -45,7 +54,7 @@ export async function POST(request) {
       .from("appraisals")
       .insert([
         {
-          user_id: session.user.id,
+          user_id: user.id,
           vehicle_data: body.vehicle_data,
           market_data: body.market_data,
           appraisal_result: body.appraisal_result,
@@ -57,9 +66,9 @@ export async function POST(request) {
 
     if (error) throw error;
 
-    return NextResponse.json(data, { status: 201 });
+    return Response.json(data, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to create appraisal" },
       { status: 500 },
     );
