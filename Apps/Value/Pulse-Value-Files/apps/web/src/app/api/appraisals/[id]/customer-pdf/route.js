@@ -1,6 +1,3 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/utils/authOptions";
 import { createClient } from "@supabase/supabase-js";
 import PDFDocument from "pdfkit";
 
@@ -11,20 +8,26 @@ const supabase = createClient(
 
 export async function GET(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { data: appraisal, error } = await supabase
       .from("appraisals")
       .select("*")
       .eq("id", params.id)
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .single();
 
     if (error || !appraisal) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Appraisal not found" },
         { status: 404 },
       );
@@ -41,7 +44,7 @@ export async function GET(request, { params }) {
     await new Promise((resolve) => {
       doc.on("end", resolve);
 
-      // ── Header ──────────────────────────────────────────────────────────
+      // Header
       doc
         .rect(0, 0, doc.page.width, 80)
         .fill("#0F172A");
@@ -73,7 +76,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(3);
 
-      // ── Vehicle Info ─────────────────────────────────────────────────────
+      // Vehicle Info
       doc
         .fillColor("#1e293b")
         .rect(50, doc.y, doc.page.width - 100, 30)
@@ -110,7 +113,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(vehicleFields.length / 2 * 1.5 + 1);
 
-      // ── Appraisal Value ───────────────────────────────────────────────────
+      // Appraisal Value
       doc
         .fillColor("#1e293b")
         .rect(50, doc.y, doc.page.width - 100, 30)
@@ -124,7 +127,6 @@ export async function GET(request, { params }) {
 
       doc.moveDown(1.5);
 
-      // Value boxes
       const values = [
         { label: "Trade-In Value", value: appraisal_result?.tradeInValue, color: "#06b6d4" },
         { label: "Retail Value", value: appraisal_result?.retailValue, color: "#10b981" },
@@ -152,7 +154,7 @@ export async function GET(request, { params }) {
 
       doc.moveDown(4);
 
-      // ── Market Analysis ───────────────────────────────────────────────────
+      // Market Analysis
       if (market_data) {
         doc
           .fillColor("#1e293b")
@@ -181,7 +183,7 @@ export async function GET(request, { params }) {
         });
       }
 
-      // ── Notes ─────────────────────────────────────────────────────────────
+      // Notes
       if (appraisal_result?.notes) {
         doc.moveDown(1);
         doc
@@ -203,7 +205,7 @@ export async function GET(request, { params }) {
           .text(appraisal_result.notes, { width: doc.page.width - 100 });
       }
 
-      // ── Footer ────────────────────────────────────────────────────────────
+      // Footer
       doc
         .rect(0, doc.page.height - 50, doc.page.width, 50)
         .fill("#0F172A");
@@ -231,7 +233,7 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     console.error("PDF generation error:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to generate PDF" },
       { status: 500 },
     );
