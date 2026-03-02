@@ -1,198 +1,66 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/Contexts/AuthContext";
-import { toast } from "sonner";
-import { LogIn, UserPlus, Mail, Lock, User, Loader2, Users } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
 
+/**
+ * Auth page — thin redirect layer.
+ *
+ * If the user arrives with access_token + refresh_token query params
+ * (from the Landing page cross-domain relay), AuthContext handles the
+ * session hydration and navigates to /dashboard.
+ *
+ * If the user arrives with NO session and NO tokens, we redirect them
+ * to the universal auth screen on the Landing page. Any invite tokens
+ * or other params are forwarded.
+ */
 export default function AuthPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const inviteToken = searchParams.get("invite");
   const { user, loading: authLoading } = useAuth();
 
-  const [mode, setMode] = useState<"login" | "signup">(inviteToken ? "signup" : "login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [inviteDealership, setInviteDealership] = useState<string | null>(null);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
-
-  // If user is already authenticated (e.g. cross-domain relay, page refresh),
-  // go straight to dashboard. AuthContext handles loading state so this only
-  // fires once the session + profile + roles are fully resolved.
   useEffect(() => {
-    if (!authLoading && user) {
-      navigate("/dashboard", { replace: true });
+    if (authLoading) return;
+
+    // If user is authenticated, AuthContext will trigger navigation to /dashboard.
+    if (user) return;
+
+    // No tokens in URL means the user navigated here directly — redirect to Landing auth
+    const accessToken = searchParams.get("access_token");
+    const refreshToken = searchParams.get("refresh_token");
+
+    if (!accessToken && !refreshToken) {
+      const landingBase =
+        import.meta.env.VITE_PULSE_LANDING_URL || "https://pulse.lotlyauto.com";
+
+      // Build the Landing auth URL, forwarding mode=post plus any invite token
+      const landingUrl = new URL(`${landingBase}/auth`);
+      landingUrl.searchParams.set("mode", "post");
+
+      // Forward invite token if present
+      const invite = searchParams.get("invite");
+      if (invite) landingUrl.searchParams.set("invite", invite);
+
+      // Forward plan if present
+      const plan = searchParams.get("plan");
+      if (plan) landingUrl.searchParams.set("plan", plan);
+
+      window.location.href = landingUrl.toString();
     }
-  }, [authLoading, user, navigate]);
+    // If tokens ARE present, AuthContext.tsx will pick them up and hydrate the session.
+  }, [authLoading, user, searchParams]);
 
-  // Validate invite token on mount
-  useEffect(() => {
-    if (!inviteToken) return;
-    (async () => {
-      const { data } = await supabase
-        .from("invitation_links")
-        .select("dealership_name, expires_at, used_at")
-        .eq("token", inviteToken)
-        .single();
-      if (data && !data.used_at && new Date(data.expires_at) > new Date()) {
-        setInviteDealership(data.dealership_name);
-      } else {
-        toast.error("This invite link is invalid or has expired");
-      }
-    })();
-  }, [inviteToken]);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      toast.error("Login failed", { description: error.message });
-    }
-    // On success, onAuthStateChange fires → AuthContext sets user →
-    // the useEffect above navigates to /dashboard once loading resolves.
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName.trim()) { toast.error("Full name is required"); return; }
-    if (!agreedToTerms || !agreedToPrivacy) { toast.error("You must agree to the Terms of Service and Privacy Policy"); return; }
-    setLoading(true);
-    const { data: signupData, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName.trim() },
-      },
-    });
-    if (error) {
-      setLoading(false);
-      toast.error("Signup failed", { description: error.message });
-      return;
-    }
-
-    // If invite token present and user has a session, accept the invite
-    if (inviteToken && signupData.session) {
-      try {
-        const { data: result, error: invError } = await supabase.rpc("accept_invite", {
-          _token: inviteToken,
-        });
-        if (invError) throw invError;
-        if (result?.error) throw new Error(result.error);
-        toast.success(`Joined ${result.dealership_name || "the dealership"}!`);
-      } catch (e: any) {
-        toast.error("Failed to accept invite", { description: e.message });
-      }
-    } else if (signupData.session) {
-      toast.success("Account created! Welcome to Pulse.");
-    } else {
-      toast.success("Check your email to verify your account!");
-    }
-    setLoading(false);
-    // Navigation happens via the useEffect watching user state
-  };
-
-  // While AuthContext is still resolving session, show a spinner
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  const inputCls = "w-full rounded-lg bg-secondary border border-border px-4 py-3 pl-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50";
-
+  // Show a loading screen while AuthContext resolves the session
+  // (either from tokens in URL or while redirecting to Landing)
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="glass-card rounded-xl p-8 w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center">
-            <img src={pulseLogo} alt="Pulse Posting" className="h-14" />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {inviteToken
-              ? "You've been invited to join a dealership"
-              : mode === "login"
-              ? "Sign in to your dashboard"
-              : "Create your dealer account"}
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <img src={pulseLogo} alt="Pulse" className="h-12 mx-auto animate-pulse" />
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
+            Loading Pulse Post\u2026
           </p>
-        </div>
-
-        {/* Invite banner */}
-        {inviteToken && inviteDealership && (
-          <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 flex items-center gap-2 text-sm">
-            <Users className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-foreground">
-              Joining <strong>{inviteDealership}</strong> as a team member
-            </span>
-          </div>
-        )}
-
-        <form onSubmit={mode === "login" ? handleLogin : handleSignup} className="space-y-4">
-          {mode === "signup" && (
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full Name" className={inputCls} />
-            </div>
-          )}
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" required className={inputCls} />
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" required minLength={6} className={inputCls} />
-          </div>
-          {mode === "signup" && (
-            <div className="space-y-3">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agreedToTerms}
-                  onChange={e => setAgreedToTerms(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
-                />
-                <span className="text-xs text-muted-foreground leading-relaxed">
-                  I agree to the{" "}
-                  <Link to="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</Link>
-                </span>
-              </label>
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agreedToPrivacy}
-                  onChange={e => setAgreedToPrivacy(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
-                />
-                <span className="text-xs text-muted-foreground leading-relaxed">
-                  I agree to the{" "}
-                  <Link to="/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</Link>
-                </span>
-              </label>
-            </div>
-          )}
-          <button type="submit" disabled={loading || (mode === "signup" && (!agreedToTerms || !agreedToPrivacy))} className="w-full rounded-lg bg-primary text-primary-foreground py-3 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : mode === "login" ? (
-              <><LogIn className="h-4 w-4" /> Sign In</>
-            ) : (
-              <><UserPlus className="h-4 w-4" /> {inviteToken ? "Join Team" : "Create Account"}</>
-            )}
-          </button>
-        </form>
-
-        <div className="text-center">
-          <button onClick={() => setMode(mode === "login" ? "signup" : "login")} className="text-xs text-primary hover:underline">
-            {mode === "login" ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-          </button>
         </div>
       </div>
     </div>
