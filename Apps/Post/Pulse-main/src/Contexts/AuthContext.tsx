@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import LoginSuccessSplash from "@/components/LoginSuccessSplash";
 
 // ---------- Types ----------
 interface Profile {
@@ -13,7 +14,6 @@ interface Profile {
 type PlanKey = string;
 
 function getPlanByProductId(productId: string): PlanKey | null {
-  // Map Stripe product IDs to plan keys if needed
   return productId ?? null;
 }
 
@@ -59,12 +59,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscriptionTier, setSubscriptionTier] = useState<PlanKey | null>(null);
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
 
-  // Guard: tracks whether initializeUserData has fully completed at least once.
-  // This prevents setLoading(false) from running before the first RPC finishes.
+  // Splash screen state — only shown on fresh sign-in transitions
+  const [showSplash, setShowSplash] = useState(false);
+  const [splashUserName, setSplashUserName] = useState<string | undefined>(undefined);
+
+  // Guard: tracks in-flight init promise to prevent duplicate RPC calls
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const initializedUserRef = useRef<string | null>(null);
+  // Track whether a session existed at mount (page refresh = no splash)
+  const hadSessionOnMountRef = useRef(false);
 
   const activeDealerId = impersonatingDealerId || profile?.dealership_id || null;
+
+  const handleSplashComplete = useCallback(() => {
+    setShowSplash(false);
+  }, []);
 
   // 1. Optimized Initialization using the Mega-RPC
   const initializeUserData = (userId: string): Promise<void> => {
@@ -89,9 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(data.profile as unknown as Profile);
           setIsSuperAdmin(!!data.is_super_admin);
           setIsDealerAdmin(!!data.is_dealer_admin);
-          console.log("[AuthContext] isDealerAdmin set to:", !!data.is_dealer_admin);
-        } else {
-          console.warn("[AuthContext] get_user_context returned null data");
+          console.log("[AuthContext] isDealerAdmin:", !!data.is_dealer_admin, "isSuperAdmin:", !!data.is_super_admin);
         }
 
         await checkSubscriptionForUser(userId);
@@ -136,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSubscriptionTier(null);
     setSubscriptionEnd(null);
     setImpersonatingDealerId(null);
+    setShowSplash(false);
     initializedUserRef.current = null;
     initPromiseRef.current = null;
   };
@@ -165,8 +173,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(currentSession?.user ?? null);
 
         if (currentSession?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
-          // IMPORTANT: await the full initialization before setting loading=false
+          // Fully resolve profile + roles BEFORE setting loading=false
           await initializeUserData(currentSession.user.id);
+
+          // Show splash only on a real sign-in, not on page refresh
+          if (event === "SIGNED_IN" && !hadSessionOnMountRef.current) {
+            const name = currentSession.user.user_metadata?.full_name as string | undefined;
+            setSplashUserName(name);
+            setShowSplash(true);
+          }
         }
 
         if (event === "SIGNED_OUT") {
@@ -181,7 +196,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Now handle the session initialization
     if (accessToken && refreshToken) {
       // Cross-domain handoff: set session from Landing page tokens
-      // This will trigger onAuthStateChange with SIGNED_IN, which handles everything
       supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
@@ -191,8 +205,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } else {
       // Normal boot: getSession triggers onAuthStateChange with INITIAL_SESSION
-      // If no session exists, we need to stop loading
       supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+        if (existingSession) {
+          hadSessionOnMountRef.current = true;
+        }
         if (!existingSession) {
           setLoading(false);
         }
@@ -227,6 +243,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={value}>
+      {/* Splash overlay — shown on fresh sign-in, dismissed after 2.5s */}
+      {showSplash && (
+        <LoginSuccessSplash
+          userName={splashUserName}
+          onComplete={handleSplashComplete}
+        />
+      )}
       {!loading && children}
     </AuthContext.Provider>
   );

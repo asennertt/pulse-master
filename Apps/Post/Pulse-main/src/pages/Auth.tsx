@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/Contexts/AuthContext";
 import { toast } from "sonner";
 import { LogIn, UserPlus, Mail, Lock, User, Loader2, Users } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
-import LoginSuccessSplash from "@/components/LoginSuccessSplash";
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -22,28 +21,14 @@ export default function AuthPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
 
-  // Splash state
-  const [showSplash, setShowSplash] = useState(false);
-  const [splashUserName, setSplashUserName] = useState<string | undefined>(undefined);
-  // Track whether splash has already been shown for this session check,
-  // so page refreshes (where user is already set) skip the splash.
-  const [hasShownSplash, setHasShownSplash] = useState(false);
-
-  // Cross-domain token relay: user arrives already authenticated (e.g. from Landing page).
-  // Show a brief splash before navigating so the transition feels intentional.
+  // If user is already authenticated (e.g. cross-domain relay, page refresh),
+  // go straight to dashboard. AuthContext handles loading state so this only
+  // fires once the session + profile + roles are fully resolved.
   useEffect(() => {
-    if (!authLoading && user && !showSplash && !hasShownSplash) {
-      const name = user.user_metadata?.full_name as string | undefined;
-      setSplashUserName(name);
-      setHasShownSplash(true);
-      setShowSplash(true);
+    if (!authLoading && user) {
+      navigate("/dashboard", { replace: true });
     }
-  }, [authLoading, user, showSplash, hasShownSplash]);
-
-  // Called when the splash animation finishes
-  const handleSplashComplete = useCallback(() => {
-    navigate("/dashboard", { replace: true });
-  }, [navigate]);
+  }, [authLoading, user, navigate]);
 
   // Validate invite token on mount
   useEffect(() => {
@@ -65,17 +50,13 @@ export default function AuthPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error("Login failed", { description: error.message });
-    } else {
-      // Derive display name from user metadata if available
-      const name = data.user?.user_metadata?.full_name as string | undefined;
-      setSplashUserName(name);
-      setHasShownSplash(true);
-      setShowSplash(true);
     }
+    // On success, onAuthStateChange fires → AuthContext sets user →
+    // the useEffect above navigates to /dashboard once loading resolves.
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -105,41 +86,24 @@ export default function AuthPage() {
         if (invError) throw invError;
         if (result?.error) throw new Error(result.error);
         toast.success(`Joined ${result.dealership_name || "the dealership"}!`);
-        setSplashUserName(fullName.trim());
-        setHasShownSplash(true);
-        setShowSplash(true);
       } catch (e: any) {
         toast.error("Failed to accept invite", { description: e.message });
       }
     } else if (signupData.session) {
-      // Email confirmation is disabled — user gets a session immediately
       toast.success("Account created! Welcome to Pulse.");
-      setSplashUserName(fullName.trim());
-      setHasShownSplash(true);
-      setShowSplash(true);
     } else {
-      // Fallback: if for some reason email confirmation is re-enabled later
       toast.success("Check your email to verify your account!");
     }
     setLoading(false);
+    // Navigation happens via the useEffect watching user state
   };
 
-  // While AuthContext is still checking for token relay, show a loading spinner
+  // While AuthContext is still resolving session, show a spinner
   if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
-    );
-  }
-
-  // Show splash overlay (covers the auth form underneath)
-  if (showSplash) {
-    return (
-      <LoginSuccessSplash
-        userName={splashUserName}
-        onComplete={handleSplashComplete}
-      />
     );
   }
 
