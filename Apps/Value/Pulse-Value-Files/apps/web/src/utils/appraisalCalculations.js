@@ -30,148 +30,237 @@ export function buildAdjustmentSteps(calculation, vehicle) {
 
   let basePriceDescription = "Market price from comparable listings";
   if (basePriceMethod === "similarity_weighted" && compCount > 0) {
-    basePriceDescription = `Similarity-weighted average from ${compCount} local comps`;
-  } else if (basePriceMethod === "median" && compCount > 0) {
-    basePriceDescription = `Median price from ${compCount} comparable listings`;
-  } else if (basePriceMethod === "estimated") {
-    basePriceDescription = "Estimated market price (limited local data)";
+    basePriceDescription = `Similarity-weighted avg of ${compCount} comparables (by mileage, trim, distance, recency)`;
+  } else if (compCount > 0) {
+    basePriceDescription = `Median of ${compCount} comparable listings`;
   }
 
-  const steps = [
+  const adjustmentSteps = [
     {
-      label: "Base Market Price",
-      description: basePriceDescription,
+      name: "Base Market Price",
       value: basePrice,
-      isBase: true,
+      description: basePriceDescription,
+      type: "base",
+      color: "#06b6d4",
     },
   ];
 
-  // Mileage adjustment
-  if (mileageAdjustment !== 0) {
-    const vehicleMileage = vehicle.miles || 0;
-    const mileageDiff = vehicleMileage - avgMarketMileage;
-    const direction = mileageDiff > 0 ? "above" : "below";
-    steps.push({
-      label: "Mileage Adjustment",
-      description: `${Math.abs(Math.round(mileageDiff)).toLocaleString()} mi ${direction} market avg (${avgMarketMileage.toLocaleString()} mi) @ $${perMileRate}/mi`,
-      value: mileageAdjustment,
-      isDeduction: mileageAdjustment < 0,
+  const userMileage = vehicle.miles || vehicle.mileage || 0;
+
+  // Show mileage adjustment if there's an adjustment value OR if we have market mileage data to compare
+  if (mileageAdjustment !== 0 || (avgMarketMileage > 0 && userMileage > 0)) {
+    const mileageDiff =
+      avgMarketMileage > 0 ? avgMarketMileage - userMileage : 0;
+    const actualAdjustment =
+      mileageAdjustment !== 0 ? mileageAdjustment : mileageDiff * perMileRate;
+
+    adjustmentSteps.push({
+      name: "Mileage Adjustment",
+      value: actualAdjustment,
+      description:
+        avgMarketMileage > 0
+          ? mileageDiff > 0
+            ? `${Math.abs(mileageDiff).toLocaleString()} mi below market avg (${Math.round(avgMarketMileage).toLocaleString()} mi) × $${perMileRate.toFixed(2)}/mi`
+            : `${Math.abs(mileageDiff).toLocaleString()} mi above market avg (${Math.round(avgMarketMileage).toLocaleString()} mi) × $${perMileRate.toFixed(2)}/mi`
+          : `Mileage: ${userMileage.toLocaleString()} mi`,
+      type: "adjustment",
+      color:
+        actualAdjustment > 0
+          ? "#10b981"
+          : actualAdjustment < 0
+            ? "#ef4444"
+            : "#94a3b8",
     });
   }
 
-  // Condition multiplier
   if (conditionMultiplier !== 1.0) {
-    const conditionLabel = vehicle.condition || "Good";
-    const conditionEffect = (conditionMultiplier - 1) * basePrice;
-    steps.push({
-      label: `Condition: ${conditionLabel}`,
-      description: `${((conditionMultiplier - 1) * 100).toFixed(0)}% adjustment for reported condition`,
-      value: Math.round(conditionEffect),
-      isDeduction: conditionEffect < 0,
+    const priceBeforeCondition = basePrice + mileageAdjustment;
+    const conditionAdjustment =
+      priceBeforeCondition * (conditionMultiplier - 1);
+    const conditionName =
+      (vehicle.condition || calculation.condition || "good")
+        .charAt(0)
+        .toUpperCase() +
+      (vehicle.condition || calculation.condition || "good").slice(1);
+    const percentChange = ((conditionMultiplier - 1) * 100).toFixed(0);
+
+    adjustmentSteps.push({
+      name: "Condition Adjustment",
+      value: conditionAdjustment,
+      description: `${conditionName} condition (${percentChange > 0 ? "+" : ""}${percentChange}%)`,
+      type: "adjustment",
+      color: conditionAdjustment > 0 ? "#10b981" : "#ef4444",
     });
   }
 
-  // MDS (Market Days Supply) adjustment
   if (mdsAdjustment !== 0) {
-    const mdsValue = vehicle.mds || vehicle.market_days_supply;
-    let mdsDescription = "Market velocity adjustment";
-    if (mdsValue) {
-      if (mdsValue < 30) {
-        mdsDescription = `Hot market (${Math.round(mdsValue)} day supply) — premium applied`;
-      } else if (mdsValue > 60) {
-        mdsDescription = `Slow market (${Math.round(mdsValue)} day supply) — discount applied`;
-      } else {
-        mdsDescription = `Normal market (${Math.round(mdsValue)} day supply)`;
-      }
-    }
-    steps.push({
-      label: "Market Velocity (MDS)",
-      description: mdsDescription,
+    const mds =
+      vehicle.market_days_supply || calculation.marketDaysSupply || 45;
+    const percentChange = ((mdsAdjustment / basePrice) * 100).toFixed(1);
+
+    adjustmentSteps.push({
+      name: "Market Velocity",
       value: mdsAdjustment,
-      isDeduction: mdsAdjustment < 0,
+      description: `${mds} days supply (${percentChange > 0 ? "+" : ""}${percentChange}% demand adjustment)`,
+      type: "adjustment",
+      color: mdsAdjustment > 0 ? "#10b981" : "#ef4444",
     });
   }
 
-  // Recall deduction
-  if (recallDeduction && recallDeduction !== 0) {
-    steps.push({
-      label: "Open Safety Recalls",
-      description: "Deduction for unresolved NHTSA safety recalls",
-      value: -Math.abs(recallDeduction),
-      isDeduction: true,
+  if (recallDeduction < 0) {
+    const recallCount = calculation.openRecalls || 1;
+
+    adjustmentSteps.push({
+      name: "Open Recalls",
+      value: recallDeduction,
+      description: `${recallCount} unresolved recall${recallCount > 1 ? "s" : ""}`,
+      type: "adjustment",
+      color: "#ef4444",
       icon: AlertTriangle,
     });
   }
 
-  return steps;
+  return adjustmentSteps;
 }
 
-export function calculateDealNumbers(appraisalValue, targetProfit, reconditioningCost) {
-  const maxBid = appraisalValue - targetProfit - reconditioningCost;
+export function calculatePulseValue(adjustmentSteps) {
+  return adjustmentSteps.reduce((sum, adj) => sum + adj.value, 0);
+}
+
+export function calculateMarketHealth(daysOfSupply) {
   return {
-    maxBid,
-    targetProfit,
-    reconditioningCost,
-    appraisalValue,
+    supply: daysOfSupply < 30 ? "Low" : daysOfSupply < 60 ? "Moderate" : "High",
+    demand: daysOfSupply < 30 ? "High" : daysOfSupply < 60 ? "Moderate" : "Low",
+    velocity:
+      daysOfSupply < 30 ? "Fast" : daysOfSupply < 60 ? "Average" : "Slow",
   };
 }
 
-export function getConfidenceColor(score) {
-  if (score >= 80) return "text-green-400";
-  if (score >= 60) return "text-yellow-400";
-  return "text-red-400";
+export function generateScatterData(vehicle) {
+  // Use real comparable data if available
+  if (vehicle.comparables && vehicle.comparables.length > 0) {
+    return vehicle.comparables
+      .filter((comp) => comp.price > 0 && comp.miles > 0)
+      .slice(0, 40)
+      .map((comp) => ({
+        x: comp.miles,
+        y: comp.price,
+        z: 100,
+      }));
+  }
+
+  // Fallback to mock data
+  const basePrice = vehicle.estimated_price || vehicle.price || 45000;
+  const baseMiles = vehicle.miles || vehicle.mileage || 30000;
+  const data = [];
+  for (let i = 0; i < 40; i++) {
+    const mileageVariation = (Math.random() - 0.5) * 40000;
+    const priceVariation = (Math.random() - 0.5) * 15000;
+    data.push({
+      x: Math.max(5000, baseMiles + mileageVariation),
+      y: Math.max(20000, basePrice + priceVariation),
+      z: 100,
+    });
+  }
+  return data;
 }
 
-export function getConfidenceBgColor(score) {
-  if (score >= 80) return "bg-green-400";
-  if (score >= 60) return "bg-yellow-400";
-  return "bg-red-400";
-}
+export function generateRadarData(vehicle) {
+  // Calculate real scores based on vehicle data
 
-export function getConfidenceLabel(score) {
-  if (score >= 80) return "High Confidence";
-  if (score >= 60) return "Moderate Confidence";
-  return "Low Confidence";
-}
+  // Market Demand Score (based on Market Days Supply)
+  let marketDemandScore = 50;
+  if (vehicle.market_days_supply) {
+    const mds = vehicle.market_days_supply;
+    if (mds < 30)
+      marketDemandScore = 95; // Hot market
+    else if (mds < 45) marketDemandScore = 85;
+    else if (mds < 60) marketDemandScore = 70;
+    else if (mds < 90) marketDemandScore = 55;
+    else marketDemandScore = 40; // Cold market
+  }
 
-export function formatCurrency(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+  // Condition Score
+  const conditionScores = {
+    excellent: 95,
+    good: 80,
+    fair: 60,
+    poor: 35,
+  };
+  const conditionScore =
+    conditionScores[vehicle.condition?.toLowerCase()] || 75;
 
-export function getConditionOptions() {
+  // Mileage Score (compared to age)
+  let mileageScore = 75;
+  const vehicleMiles = vehicle.miles || vehicle.mileage || 0;
+  if (vehicleMiles && vehicle.year) {
+    const currentYear = new Date().getFullYear();
+    const age = currentYear - vehicle.year;
+    const expectedMileage = age * 12000; // 12k miles/year average
+    const mileageDiff = vehicleMiles - expectedMileage;
+
+    if (mileageDiff < -15000)
+      mileageScore = 95; // Well below average
+    else if (mileageDiff < -5000) mileageScore = 85;
+    else if (mileageDiff < 5000)
+      mileageScore = 75; // Average
+    else if (mileageDiff < 15000) mileageScore = 60;
+    else if (mileageDiff < 30000) mileageScore = 45;
+    else mileageScore = 30; // Well above average
+  }
+
+  // Trim Value Score (based on MSRP vs market median)
+  let trimValueScore = 70;
+  const msrpValue =
+    typeof vehicle.msrp === "object" ? vehicle.msrp?.base : vehicle.msrp;
+  if (msrpValue && vehicle.comparables?.length > 0) {
+    const comparablePrices = vehicle.comparables
+      .filter((c) => c.price > 0)
+      .map((c) => c.price)
+      .sort((a, b) => a - b);
+
+    if (comparablePrices.length > 0) {
+      const medianPrice =
+        comparablePrices[Math.floor(comparablePrices.length / 2)];
+      const priceRatio = vehicle.estimated_price / medianPrice;
+
+      if (priceRatio > 1.15) trimValueScore = 90;
+      else if (priceRatio > 1.05) trimValueScore = 80;
+      else if (priceRatio > 0.95) trimValueScore = 70;
+      else if (priceRatio > 0.85) trimValueScore = 60;
+      else trimValueScore = 50;
+    }
+  }
+
+  // Features Score (based on options and features count)
+  let featuresScore = 60;
+  const totalFeatures =
+    (vehicle.features?.length || 0) + (vehicle.options?.length || 0);
+  if (totalFeatures > 20) featuresScore = 90;
+  else if (totalFeatures > 15) featuresScore = 80;
+  else if (totalFeatures > 10) featuresScore = 70;
+  else if (totalFeatures > 5) featuresScore = 60;
+  else featuresScore = 50;
+
+  // Data Quality Score (based on comparables and confidence)
+  let dataQualityScore = 50;
+  if (vehicle.confidence_score) {
+    dataQualityScore = vehicle.confidence_score;
+  } else if (vehicle.comparables?.length) {
+    const count = vehicle.comparables.length;
+    if (count >= 25) dataQualityScore = 90;
+    else if (count >= 15) dataQualityScore = 80;
+    else if (count >= 10) dataQualityScore = 70;
+    else if (count >= 5) dataQualityScore = 60;
+    else dataQualityScore = 50;
+  }
+
   return [
-    { value: "Excellent", label: "Excellent", multiplier: 1.05 },
-    { value: "Good", label: "Good", multiplier: 1.0 },
-    { value: "Fair", label: "Fair", multiplier: 0.92 },
-    { value: "Poor", label: "Poor", multiplier: 0.82 },
+    { subject: "Market Demand", A: marketDemandScore, fullMark: 100 },
+    { subject: "Condition", A: conditionScore, fullMark: 100 },
+    { subject: "Mileage", A: mileageScore, fullMark: 100 },
+    { subject: "Trim Value", A: trimValueScore, fullMark: 100 },
+    { subject: "Features", A: featuresScore, fullMark: 100 },
+    { subject: "Data Quality", A: dataQualityScore, fullMark: 100 },
   ];
-}
-
-export function groupComparablesByPrice(comparables) {
-  if (!comparables || comparables.length === 0) return [];
-  
-  const sorted = [...comparables].sort((a, b) => (a.price || 0) - (b.price || 0));
-  const min = sorted[0].price || 0;
-  const max = sorted[sorted.length - 1].price || 0;
-  const range = max - min;
-  const bucketSize = range / 5 || 5000;
-  
-  const buckets = {};
-  sorted.forEach(comp => {
-    const bucketIndex = Math.floor((comp.price - min) / bucketSize);
-    const bucketKey = min + bucketIndex * bucketSize;
-    if (!buckets[bucketKey]) buckets[bucketKey] = [];
-    buckets[bucketKey].push(comp);
-  });
-  
-  return Object.entries(buckets).map(([price, comps]) => ({
-    priceRange: `$${Math.round(Number(price) / 1000)}k-$${Math.round((Number(price) + bucketSize) / 1000)}k`,
-    count: comps.length,
-    avgMileage: Math.round(comps.reduce((sum, c) => sum + (c.miles || 0), 0) / comps.length),
-  }));
 }
