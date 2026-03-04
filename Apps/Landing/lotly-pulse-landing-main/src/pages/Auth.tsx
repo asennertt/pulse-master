@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import BundleWelcomeSplash from "@/components/BundleWelcomeSplash";
 
 // Branding Imports
 import pulseHeroLogo from "@/assets/pulse-hero-logo.png";
@@ -26,10 +27,8 @@ const PRODUCT_URLS: Record<string, string> = {
  * Redirects an authenticated user to the correct product app,
  * passing Supabase tokens via URL for cross-domain session handoff.
  */
-const redirectToProduct = async (mode: string | null) => {
-  const targetMode = mode === "both" ? "post" : mode; // Default bundle users to Post first
-  const targetUrl = targetMode ? PRODUCT_URLS[targetMode] : null;
-
+const redirectToProduct = async (product: "post" | "value") => {
+  const targetUrl = PRODUCT_URLS[product];
   if (!targetUrl) return false;
 
   const { data: { session } } = await supabase.auth.getSession();
@@ -53,6 +52,8 @@ const Auth = () => {
   const inviteToken = searchParams.get("invite");
   const view = searchParams.get("view"); // 'login' or 'signup'
 
+  const isBundle = mode === "both";
+
   // Default: signup if coming from landing (no mode), login if coming from Post/Value
   const [isSignUp, setIsSignUp] = useState(
     inviteToken ? true : view === "login" ? false : view === "signup" ? true : !mode
@@ -66,6 +67,13 @@ const Auth = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [inviteDealership, setInviteDealership] = useState<string | null>(null);
+
+  // Bundle splash state
+  const [showBundleSplash, setShowBundleSplash] = useState(false);
+  const [bundleUserName, setBundleUserName] = useState<string | undefined>(undefined);
+
+  // Track whether the current auth event was triggered by *this* page's signup/login
+  const authTriggeredByForm = useRef(false);
 
   // If there's an invite token, force signup mode
   useEffect(() => {
@@ -104,8 +112,23 @@ const Auth = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session) {
-          const redirected = await redirectToProduct(mode);
-          if (!redirected) {
+          // Bundle users: show the product-chooser splash instead of auto-redirecting
+          if (isBundle && authTriggeredByForm.current) {
+            const name = session.user?.user_metadata?.full_name as string | undefined;
+            setBundleUserName(name);
+            setShowBundleSplash(true);
+            authTriggeredByForm.current = false;
+            return;
+          }
+
+          // Non-bundle or already-signed-in: redirect directly
+          const targetProduct = isBundle ? "post" : (mode as "post" | "value");
+          if (targetProduct) {
+            const redirected = await redirectToProduct(targetProduct);
+            if (!redirected) {
+              navigate("/");
+            }
+          } else {
             navigate("/");
           }
         }
@@ -115,15 +138,32 @@ const Auth = () => {
     // Check if already signed in
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
-        const redirected = await redirectToProduct(mode);
-        if (!redirected) {
+        // If the user is already signed in and this is a bundle page, show the splash
+        if (isBundle) {
+          const name = session.user?.user_metadata?.full_name as string | undefined;
+          setBundleUserName(name);
+          setShowBundleSplash(true);
+          return;
+        }
+
+        const targetProduct = mode as "post" | "value" | null;
+        if (targetProduct) {
+          const redirected = await redirectToProduct(targetProduct);
+          if (!redirected) {
+            navigate("/");
+          }
+        } else {
           navigate("/");
         }
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, mode]);
+  }, [navigate, mode, isBundle]);
+
+  const handleBundleProductSelect = async (product: "post" | "value") => {
+    await redirectToProduct(product);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,6 +178,7 @@ const Auth = () => {
     }
 
     setLoading(true);
+    authTriggeredByForm.current = true;
 
     try {
       if (isSignUp) {
@@ -191,6 +232,7 @@ const Auth = () => {
         if (error) throw error;
       }
     } catch (error: any) {
+      authTriggeredByForm.current = false;
       toast({
         title: "Access Denied",
         description: error.message,
@@ -201,6 +243,17 @@ const Auth = () => {
     }
   };
 
+  // ── Bundle splash overlay ──────────────────────────────────────────────────
+  if (showBundleSplash) {
+    return (
+      <BundleWelcomeSplash
+        userName={bundleUserName}
+        onSelectProduct={handleBundleProductSelect}
+      />
+    );
+  }
+
+  // ── Normal auth form ───────────────────────────────────────────────────────
   const subtitle = inviteToken
     ? "You've been invited to join a dealership"
     : isSignUp
@@ -226,7 +279,7 @@ const Auth = () => {
           <div className="flex flex-col items-center gap-2">
             {mode && (
               <Badge variant="outline" className="text-[10px] uppercase tracking-[0.2em] font-bold border-primary/30 text-primary">
-                {mode} TERMINAL ACTIVE
+                {mode === "both" ? "BUNDLE" : mode} TERMINAL ACTIVE
               </Badge>
             )}
             {selectedPlan && (
@@ -319,7 +372,7 @@ const Auth = () => {
                 />
               </div>
 
-              {/* Terms & Privacy \u2014 only on signup */}
+              {/* Terms & Privacy — only on signup */}
               {isSignUp && (
                 <div className="space-y-3 mt-1">
                   <label className="flex items-start gap-2.5 cursor-pointer">
