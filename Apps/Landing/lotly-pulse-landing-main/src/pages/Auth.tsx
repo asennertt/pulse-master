@@ -19,7 +19,7 @@ import pulseValueLogo from "@/assets/pulse-value-logo.png";
  */
 const PRODUCT_URLS: Record<string, string> = {
   post: import.meta.env.VITE_PULSE_POST_URL || "https://post.pulse.lotlyauto.com",
-  value: import.meta.env.VITE_PULSE_VALUE_URL || "https://pulse-value-production.up.railway.app",
+  value: import.meta.env.VITE_PULSE_VALUE_URL || "https://value.pulse.lotlyauto.com",
 };
 
 /**
