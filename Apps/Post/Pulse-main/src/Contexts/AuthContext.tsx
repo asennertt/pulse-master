@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import LoginSuccessSplash from "@/components/LoginSuccessSplash";
 
@@ -76,12 +77,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializedUserRef = useRef<string | null>(null);
   // Track whether a session existed at mount (page refresh = no splash)
   const hadSessionOnMountRef = useRef(false);
+  // Track whether we're in the middle of a token relay (prevents stale session race)
+  const tokenRelayInProgressRef = useRef(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const activeDealerId = impersonatingDealerId || profile?.dealership_id || null;
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
-  }, []);
+    // Navigate after splash completes — route based on onboarding status
+    const dest = profile && !profile.onboarding_complete ? "/onboarding" : "/dashboard";
+    if (location.pathname !== dest) {
+      navigate(dest, { replace: true });
+    }
+  }, [navigate, location.pathname, profile]);
 
   const clearAuth = useCallback(() => {
     setUser(null);
@@ -178,7 +189,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const accessToken = params.get("access_token");
     const refreshToken = params.get("refresh_token");
 
-    if (accessToken || refreshToken) {
+    // If we have relay tokens, mark that we're in the middle of a token relay.
+    // This prevents the INITIAL_SESSION handler from force-signing-out a stale
+    // session before setSession() has a chance to replace it.
+    if (accessToken && refreshToken) {
+      tokenRelayInProgressRef.current = true;
+
+      // Strip tokens from the URL immediately
       const url = new URL(window.location.href);
       url.searchParams.delete("access_token");
       url.searchParams.delete("refresh_token");
@@ -187,6 +204,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
+        // If we're relaying tokens and the INITIAL_SESSION fires with a stale session,
+        // skip it — setSession() is about to replace it.
+        if (tokenRelayInProgressRef.current && event === "INITIAL_SESSION") {
+          console.log("[AuthContext] Skipping INITIAL_SESSION during token relay.");
+          return;
+        }
+
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
 
@@ -194,7 +218,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const success = await initializeUserData(currentSession.user.id);
 
           if (!success) {
-            await forceSignOut();
+            // Don't force sign-out during token relay — setSession hasn't fired yet
+            if (!tokenRelayInProgressRef.current) {
+              await forceSignOut();
+            }
             return;
           }
 
@@ -206,6 +233,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setSplashVariant(variant);
             setShowSplash(true);
           }
+
+          // Clear the token relay flag — we're done
+          tokenRelayInProgressRef.current = false;
         }
 
         if (event === "SIGNED_OUT") {
@@ -220,8 +250,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
+      }).then(() => {
+        tokenRelayInProgressRef.current = false;
       }).catch((err) => {
         console.error("[AuthContext] Token relay failed:", err);
+        tokenRelayInProgressRef.current = false;
         setLoading(false);
       });
     } else {
