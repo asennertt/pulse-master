@@ -129,36 +129,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializedUserRef.current = userId;
 
     const promise = (async (): Promise<boolean> => {
-      try {
-        const { data, error } = await supabase.rpc("get_user_context", {
-          _user_id: userId,
-        });
+      // Retry logic: the handle_new_user trigger may not have finished yet
+      const MAX_RETRIES = 4;
+      const RETRY_DELAY_MS = 800;
 
-        if (error) throw error;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const { data, error } = await supabase.rpc("get_user_context", {
+            _user_id: userId,
+          });
 
-        if (data?.error) {
-          console.error("[AuthContext] get_user_context returned error:", data.error);
+          if (error) throw error;
+
+          if (data?.error) {
+            console.error("[AuthContext] get_user_context returned error:", data.error);
+            return false;
+          }
+
+          if (!data?.profile) {
+            if (attempt < MAX_RETRIES) {
+              console.log(`[AuthContext] Profile not ready (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS}ms...`);
+              await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+              continue;
+            }
+            console.warn("[AuthContext] No profile found after retries — session may be stale.");
+            return false;
+          }
+
+          setProfile(data.profile as unknown as Profile);
+          setIsSuperAdmin(!!data.is_super_admin);
+          setIsDealerAdmin(!!data.is_dealer_admin);
+
+          await checkSubscriptionForUser(userId);
+          return true;
+        } catch (error) {
+          console.error("[AuthContext] Error initializing user data:", error);
+          if (attempt < MAX_RETRIES) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            continue;
+          }
           return false;
         }
-
-        if (!data?.profile) {
-          console.warn("[AuthContext] No profile found for user — session may be stale.");
-          return false;
-        }
-
-        setProfile(data.profile as unknown as Profile);
-        setIsSuperAdmin(!!data.is_super_admin);
-        setIsDealerAdmin(!!data.is_dealer_admin);
-
-        await checkSubscriptionForUser(userId);
-        return true;
-      } catch (error) {
-        console.error("[AuthContext] Error initializing user data:", error);
-        return false;
-      } finally {
-        initPromiseRef.current = null;
       }
-    })();
+      return false;
+    })().finally(() => {
+      initPromiseRef.current = null;
+    });
 
     initPromiseRef.current = promise;
     return promise;
@@ -271,12 +287,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
-          console.warn("[AuthContext] Safety timeout: forcing loading=false after 8s");
+          console.warn("[AuthContext] Safety timeout: forcing loading=false after 12s");
           return false;
         }
         return current;
       });
-    }, 8000);
+    }, 12000);
 
     return () => {
       subscription.unsubscribe();
