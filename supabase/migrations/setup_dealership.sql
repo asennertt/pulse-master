@@ -53,9 +53,9 @@ BEGIN
     -- Append a short random suffix to guarantee uniqueness
     v_slug := v_slug || '-' || substr(md5(random()::text), 1, 6);
 
-    -- 4. Create the dealership row
+    -- 4. Create the dealership row (uses 'active' to match CHECK constraint)
     INSERT INTO public.dealerships (name, slug, address, owner_email, status)
-    VALUES (_biz_name, v_slug, _biz_address, v_user_email, 'pending')
+    VALUES (_biz_name, v_slug, _biz_address, v_user_email, 'active')
     RETURNING id INTO v_dealer_id;
 
     -- 5. Link the profile to the new dealership and advance onboarding

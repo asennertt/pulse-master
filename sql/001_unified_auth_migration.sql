@@ -1,6 +1,6 @@
 -- =============================================================================
 -- 001_unified_auth_migration.sql
--- Unified Supabase Auth: dealer_value_user role + auto-assign trigger
+-- Unified Supabase Auth: auto-assign roles on signup trigger
 -- =============================================================================
 
 -- 1. Create the dealer_value_user role (safe: does nothing if it already exists)
@@ -39,7 +39,8 @@ CREATE POLICY "Service role can manage roles"
   FOR ALL
   USING (auth.role() = 'service_role');
 
--- 3. Function: auto-assign dealer_value_user on sign-up
+-- 3. Function: auto-assign dealer_admin + dealer_user on sign-up
+--    Every new signup is a dealership owner until they assign staff.
 CREATE OR REPLACE FUNCTION public.handle_new_user_role()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -47,9 +48,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  -- Assign dealer_admin (owner of their dealership)
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'dealer_value_user')
+  VALUES (NEW.id, 'dealer_admin')
   ON CONFLICT (user_id, role) DO NOTHING;
+
+  -- Assign dealer_user (general authenticated user role)
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (NEW.id, 'dealer_user')
+  ON CONFLICT (user_id, role) DO NOTHING;
+
   RETURN NEW;
 END;
 $$;
@@ -61,7 +69,7 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW
   EXECUTE PROCEDURE public.handle_new_user_role();
 
--- 5. Helper view: expose current user’s roles to the client (via Supabase client)
+-- 5. Helper view: expose current user's roles to the client (via Supabase client)
 CREATE OR REPLACE VIEW public.my_roles AS
   SELECT role, granted_at
   FROM   public.user_roles
