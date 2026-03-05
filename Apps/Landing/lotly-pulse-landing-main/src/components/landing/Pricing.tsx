@@ -1,13 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Check } from "lucide-react";
 import pulsePostLogo from "@/assets/pulse-post-logo.png";
-import pulseValueLogo from "@/assets/pulse-value-logo.png";
 
 type Plan = {
   featured: boolean;
@@ -21,30 +19,6 @@ type Plan = {
   cta: string;
   note: string;
 };
-
-const valuePlans: Plan[] = [
-  {
-    featured: false, pill: "Free", title: "Free",
-    desc: "Perfect for trying out the platform.",
-    price: "0", per: "/forever", includes: "3 total appraisals",
-    features: ["3 total appraisals", "Real-time market data", "Professional reports", "Email delivery"],
-    cta: "Get Started", note: "No credit card required",
-  },
-  {
-    featured: false, pill: "Starter", title: "Starter",
-    desc: "Great for individual dealers.",
-    price: "39", per: "/mo", includes: "10 appraisals per month",
-    features: ["10 appraisals/month", "Real-time market data", "Professional reports", "Email delivery", "Priority support"],
-    cta: "Subscribe", note: "Cancel anytime",
-  },
-  {
-    featured: true, pill: "Most Popular", title: "Buyer",
-    desc: "For dealerships and power users.",
-    price: "99", per: "/mo", includes: "Unlimited appraisals",
-    features: ["Unlimited appraisals", "Real-time market data", "Professional reports", "Email delivery", "Priority support"],
-    cta: "Subscribe", note: "Most popular choice",
-  },
-];
 
 const postPlans: Plan[] = [
   {
@@ -63,14 +37,7 @@ const postPlans: Plan[] = [
   },
 ];
 
-const bundleFeatures = [
-  "Unlimited Posts", "Unlimited Appraisals", "AI Description Generator", "Real-time Market Data",
-  "Smart Image Sorter & Sold Alerts", "Professional Appraisal Reports", "Unlimited Staff & Role Access",
-  "Admin Performance Dashboard", "DMS Sync", "Priority Support",
-];
-
-// Added 'mode' prop to PlanCard to help with routing
-const PlanCard = ({ plan, mode }: { plan: Plan, mode: string }) => (
+const PlanCard = ({ plan }: { plan: Plan }) => (
   <Card className={`transition-all hover:-translate-y-0.5 ${plan.featured ? "border-primary shadow-lg" : "hover:shadow-lg"}`}>
     <CardContent className="p-8">
       <Badge variant={plan.featured ? "default" : "secondary"} className="mb-5 text-[11px] uppercase tracking-widest font-bold">
@@ -101,8 +68,7 @@ const PlanCard = ({ plan, mode }: { plan: Plan, mode: string }) => (
       </ul>
 
       <Button variant={plan.featured ? "default" : "outline"} className="w-full font-bold italic" size="lg" asChild>
-        {/* Updated link to include both mode and plan name */}
-        <Link to={`/auth?mode=${mode}&plan=${encodeURIComponent(plan.title)}`}>{plan.cta}</Link>
+        <Link to={`/auth?mode=post&plan=${encodeURIComponent(plan.title)}`}>{plan.cta}</Link>
       </Button>
       <p className="text-xs text-center mt-2.5 text-muted-foreground">{plan.note}</p>
     </CardContent>
@@ -136,78 +102,9 @@ const Pricing = () => {
           </p>
         </div>
 
-        <Tabs defaultValue="value" className="reveal">
-          <TabsList className="grid w-full max-w-md mx-auto grid-cols-3 mb-12">
-            <TabsTrigger value="value" className="font-bold uppercase tracking-tighter">Pulse Value</TabsTrigger>
-            <TabsTrigger value="post" className="font-bold uppercase tracking-tighter">Pulse Post</TabsTrigger>
-            <TabsTrigger value="bundle" className="relative font-bold uppercase tracking-tighter">
-              Bundle & Save
-              <span className="absolute -top-2.5 -right-1 bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                Save
-              </span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="value">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-[1080px] mx-auto">
-              {valuePlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} mode="value" />)}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="post">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-[840px] mx-auto">
-              {postPlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} mode="post" />)}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="bundle">
-            <div className="max-w-[640px] mx-auto">
-              <Card className="border-primary shadow-lg bg-gradient-to-b from-primary/5 to-transparent">
-                <CardContent className="p-12 text-center">
-                  <Badge className="mb-6 text-[11px] uppercase tracking-widest font-bold bg-green-500/20 text-green-400 border-green-500/30">
-                    Best Value
-                  </Badge>
-
-                  <div className="flex items-center justify-center gap-4 mb-4">
-                    <img src={pulsePostLogo} alt="Pulse Post" className="h-12 brightness-0 invert opacity-70" />
-                    <span className="text-foreground/30 text-2xl font-light">+</span>
-                    <img src={pulseValueLogo} alt="Pulse Value" className="h-12 brightness-0 invert opacity-70" />
-                  </div>
-
-                  <h3 className="text-[22px] font-bold tracking-tight mb-1 text-foreground">Pulse Bundle</h3>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    Get both Pulse Post & Pulse Value at a discounted rate.
-                  </p>
-
-                  <div className="flex items-baseline justify-center gap-0.5 mb-1">
-                    <span className="text-xl font-bold text-foreground">$</span>
-                    <span className="text-6xl font-bold tracking-tight leading-none text-foreground">139</span>
-                    <span className="text-sm text-muted-foreground">/mo</span>
-                  </div>
-                  <p className="text-[13px] text-green-400 font-semibold mb-6">Save $59/mo vs. buying separately</p>
-
-                  <Separator className="mb-6" />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2.5 text-left max-w-[440px] mx-auto mb-8">
-                    {bundleFeatures.map((f) => (
-                      <div key={f} className="flex items-start gap-2.5 text-sm text-foreground/60 leading-snug py-1">
-                        <span className="w-4 h-4 rounded-full bg-accent flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Check className="w-2.5 h-2.5 text-accent-foreground" />
-                        </span>
-                        {f}
-                      </div>
-                    ))}
-                  </div>
-
-                  <Button size="lg" className="w-full max-w-[320px] shadow-lg font-bold italic" asChild>
-                    <Link to="/auth?mode=both&plan=Bundle">Get the Bundle</Link>
-                  </Button>
-                  <p className="text-xs mt-2.5 text-muted-foreground uppercase tracking-widest font-semibold">7-day free trial included</p>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-[840px] mx-auto reveal">
+          {postPlans.map((plan) => <PlanCard key={plan.title + plan.price} plan={plan} />)}
+        </div>
 
         <p className="mt-7 text-center text-sm text-muted-foreground">
           Need enterprise pricing or custom features?{" "}

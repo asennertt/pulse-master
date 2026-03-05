@@ -3,7 +3,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Check } from "lucide-react";
 import pulsePostLogo from "@/assets/pulse-post-logo.png";
-import pulseValueLogo from "@/assets/pulse-value-logo.png";
 
 const products = [
 {
@@ -19,20 +18,6 @@ const products = [
   "Sold alerts — auto-pull ads when cars leave",
   "Staff invites with role-based access",
   "Admin dashboard with posting analytics"]
-
-},
-{
-  tag: "📋 Appraisal",
-  title: "Pulse Value",
-  desc: "Stop guessing. Get instant, accurate vehicle valuations in seconds — powered by live market data from thousands of listings.",
-  logo: pulseValueLogo,
-  features: [
-  "Live market data — real-time, not last month's book",
-  "Laser-focused accuracy (mileage, trim, options, condition)",
-  "Instant results in under 5 seconds",
-  "Pro reports that impress customers",
-  "13,750+ vehicles analyzed with 98% accuracy",
-  "3 free appraisals — no credit card required"]
 
 }];
 
@@ -59,12 +44,11 @@ const Products = () => {
           <h2 className="text-[clamp(28px,3.2vw,42px)] font-bold tracking-tight leading-[1.1] mb-3.5 text-foreground">
             Everything your dealership needs
           </h2>
-          <p className="text-[17px] text-muted-foreground leading-relaxed max-w-[500px]">Two powerful tools to streamline every aspect of your operation. From acquisition to sale.
-
+          <p className="text-[17px] text-muted-foreground leading-relaxed max-w-[500px]">The powerful tool that streamlines your marketplace operation. From inventory to sale.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 reveal">
+        <div className="grid grid-cols-1 max-w-[560px] mx-auto gap-6 reveal">
           {products.map((prod) =>
           <Card key={prod.tag} className="group overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5 border-border">
               <CardContent className="p-10 relative">
@@ -100,7 +84,6 @@ const Products = () => {
                 </ul>
 
                 
-
 
               </CardContent>
             </Card>
