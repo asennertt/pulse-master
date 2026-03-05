@@ -1,0 +1,2 @@
+-- See live_delta.sql for the SQL to run against the live Supabase instance
+-- This file is tracked separately from the consolidated schema files
