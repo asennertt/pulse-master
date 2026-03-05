@@ -41,11 +41,20 @@ export default function OnboardingPage() {
       toast.error("Business name and address are required");
       return;
     }
+    if (!user) {
+      toast.error("Not authenticated");
+      return;
+    }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("setup-dealership", {
-        body: { bizName: bizName.trim(), bizAddress: bizAddress.trim() },
+      // Call the setup_dealership RPC — runs as SECURITY DEFINER on the server,
+      // so it can create the dealership, link the profile, and assign the
+      // dealer_admin role even though user_roles INSERT is restricted to service_role.
+      const { data, error } = await supabase.rpc("setup_dealership", {
+        _biz_name: bizName.trim(),
+        _biz_address: bizAddress.trim(),
       });
+
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
