@@ -205,10 +205,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const accessToken = params.get("access_token");
     const refreshToken = params.get("refresh_token");
 
-    // If we have relay tokens, mark that we're in the middle of a token relay.
-    // This prevents the INITIAL_SESSION handler from force-signing-out a stale
-    // session before setSession() has a chance to replace it.
-    if (accessToken && refreshToken) {
+    // Detect token relay: tokens in URL from cross-domain redirect (landing → post app)
+    const isTokenRelay = !!(accessToken && refreshToken);
+
+    if (isTokenRelay) {
       tokenRelayInProgressRef.current = true;
 
       // Strip tokens from the URL immediately
@@ -220,8 +220,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        // If we're relaying tokens and the INITIAL_SESSION fires with a stale session,
-        // skip it — setSession() is about to replace it.
+        console.log(`[AuthContext] onAuthStateChange: event=${event}, hasSession=${!!currentSession}, tokenRelay=${tokenRelayInProgressRef.current}`);
+
+        // During token relay: skip INITIAL_SESSION because it carries the stale
+        // session from before setSession() replaces it.
         if (tokenRelayInProgressRef.current && event === "INITIAL_SESSION") {
           console.log("[AuthContext] Skipping INITIAL_SESSION during token relay.");
           return;
@@ -234,7 +236,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const success = await initializeUserData(currentSession.user.id);
 
           if (!success) {
-            // Don't force sign-out during token relay — setSession hasn't fired yet
+            // During token relay don't force sign-out; the real session is still
+            // being injected.  For normal flows, a failed init means a stale/bad
+            // session — sign the user out so they see the login form.
             if (!tokenRelayInProgressRef.current) {
               await forceSignOut();
             }
@@ -250,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setShowSplash(true);
           }
 
-          // Clear the token relay flag — we're done
+          // Clear the token relay flag — auth is fully initialised
           tokenRelayInProgressRef.current = false;
         }
 
@@ -262,18 +266,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    if (accessToken && refreshToken) {
+    if (isTokenRelay) {
+      // Token relay path: inject the tokens from the URL into Supabase.
+      // This fires a new SIGNED_IN event which the handler above will process.
       supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      }).then(() => {
-        tokenRelayInProgressRef.current = false;
+        access_token: accessToken!,
+        refresh_token: refreshToken!,
       }).catch((err) => {
         console.error("[AuthContext] Token relay failed:", err);
         tokenRelayInProgressRef.current = false;
         setLoading(false);
       });
+      // NOTE: We no longer clear tokenRelayInProgressRef in .then() here —
+      // the flag is cleared inside the onAuthStateChange handler after
+      // initializeUserData succeeds. This prevents the race where .then()
+      // fires before the SIGNED_IN handler runs.
     } else {
+      // Normal path (no token relay): check for an existing session.
       supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
         if (existingSession) {
           hadSessionOnMountRef.current = true;
@@ -281,6 +290,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!existingSession) {
           setLoading(false);
         }
+        // If there IS a session, onAuthStateChange(INITIAL_SESSION) will
+        // fire and handle initialisation — nothing extra needed here.
       });
     }
 
