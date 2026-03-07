@@ -87,7 +87,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
-    // Navigate after splash completes — route based on onboarding status
     const dest = profile && !profile.onboarding_complete ? "/onboarding" : "/dashboard";
     if (location.pathname !== dest) {
       navigate(dest, { replace: true });
@@ -109,19 +108,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initPromiseRef.current = null;
   }, []);
 
-  // Force sign-out: clears stale/invalid session so the user sees the login form
   const forceSignOut = useCallback(async () => {
     console.warn("[AuthContext] Forcing sign-out due to invalid session or missing profile.");
     try {
       await supabase.auth.signOut();
     } catch {
-      // signOut can fail if the session is already invalid — that's fine
+      // signOut can fail if the session is already invalid
     }
     clearAuth();
     setLoading(false);
   }, [clearAuth]);
 
-  // Returns true if initialization succeeded, false if the session is bad
   const initializeUserData = (userId: string): Promise<boolean> => {
     if (initPromiseRef.current && initializedUserRef.current === userId) {
       return initPromiseRef.current;
@@ -129,12 +126,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializedUserRef.current = userId;
 
     const promise = (async (): Promise<boolean> => {
-      // Retry logic: the handle_new_user trigger may not have finished yet
       const MAX_RETRIES = 4;
       const RETRY_DELAY_MS = 800;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
+          console.log(`[AuthContext] Calling get_user_context (attempt ${attempt}/${MAX_RETRIES})...`);
           const { data, error } = await supabase.rpc("get_user_context", {
             _user_id: userId,
           });
@@ -156,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return false;
           }
 
+          console.log("[AuthContext] Profile loaded:", data.profile.full_name, "admin:", data.is_dealer_admin, "super:", data.is_super_admin);
           setProfile(data.profile as unknown as Profile);
           setIsSuperAdmin(!!data.is_super_admin);
           setIsDealerAdmin(!!data.is_dealer_admin);
@@ -205,13 +203,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const accessToken = params.get("access_token");
     const refreshToken = params.get("refresh_token");
 
-    // Detect token relay: tokens in URL from cross-domain redirect (landing → post app)
     const isTokenRelay = !!(accessToken && refreshToken);
 
     if (isTokenRelay) {
       tokenRelayInProgressRef.current = true;
 
-      // Strip tokens from the URL immediately
       const url = new URL(window.location.href);
       url.searchParams.delete("access_token");
       url.searchParams.delete("refresh_token");
@@ -219,11 +215,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
+      (event, currentSession) => {
         console.log(`[AuthContext] onAuthStateChange: event=${event}, hasSession=${!!currentSession}, tokenRelay=${tokenRelayInProgressRef.current}`);
 
-        // During token relay: skip INITIAL_SESSION because it carries the stale
-        // session from before setSession() replaces it.
         if (tokenRelayInProgressRef.current && event === "INITIAL_SESSION") {
           console.log("[AuthContext] Skipping INITIAL_SESSION during token relay.");
           return;
@@ -233,29 +227,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(currentSession?.user ?? null);
 
         if (currentSession?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
-          const success = await initializeUserData(currentSession.user.id);
+          // CRITICAL: Defer the async work with setTimeout(0) to break out of
+          // the Supabase auth lock (navigator.locks). The onAuthStateChange
+          // callback runs INSIDE the auth lock held by setSession/initialize.
+          // If we await supabase.rpc() here, the RPC call tries to acquire the
+          // same lock to read the access token — causing a deadlock where the
+          // RPC never resolves.
+          const capturedUser = currentSession.user;
+          const capturedEvent = event;
+          setTimeout(async () => {
+            console.log("[AuthContext] Deferred init running for:", capturedUser.id);
+            const success = await initializeUserData(capturedUser.id);
 
-          if (!success) {
-            // During token relay don't force sign-out; the real session is still
-            // being injected.  For normal flows, a failed init means a stale/bad
-            // session — sign the user out so they see the login form.
-            if (!tokenRelayInProgressRef.current) {
-              await forceSignOut();
+            if (!success) {
+              if (!tokenRelayInProgressRef.current) {
+                await forceSignOut();
+              }
+              return;
             }
-            return;
-          }
 
-          // Show splash only on a real sign-in/sign-up, not on page refresh
-          if (event === "SIGNED_IN" && !hadSessionOnMountRef.current) {
-            const name = currentSession.user.user_metadata?.full_name as string | undefined;
-            const variant = isNewAccount(currentSession.user) ? "signup" : "login";
-            setSplashUserName(name);
-            setSplashVariant(variant);
-            setShowSplash(true);
-          }
+            if (capturedEvent === "SIGNED_IN" && !hadSessionOnMountRef.current) {
+              const name = capturedUser.user_metadata?.full_name as string | undefined;
+              const variant = isNewAccount(capturedUser) ? "signup" : "login";
+              setSplashUserName(name);
+              setSplashVariant(variant);
+              setShowSplash(true);
+            }
 
-          // Clear the token relay flag — auth is fully initialised
-          tokenRelayInProgressRef.current = false;
+            tokenRelayInProgressRef.current = false;
+            setLoading(false);
+          }, 0);
+          return;
         }
 
         if (event === "SIGNED_OUT") {
@@ -267,8 +269,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     if (isTokenRelay) {
-      // Token relay path: inject the tokens from the URL into Supabase.
-      // This fires a new SIGNED_IN event which the handler above will process.
       supabase.auth.setSession({
         access_token: accessToken!,
         refresh_token: refreshToken!,
@@ -277,12 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         tokenRelayInProgressRef.current = false;
         setLoading(false);
       });
-      // NOTE: We no longer clear tokenRelayInProgressRef in .then() here —
-      // the flag is cleared inside the onAuthStateChange handler after
-      // initializeUserData succeeds. This prevents the race where .then()
-      // fires before the SIGNED_IN handler runs.
     } else {
-      // Normal path (no token relay): check for an existing session.
       supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
         if (existingSession) {
           hadSessionOnMountRef.current = true;
@@ -290,8 +285,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!existingSession) {
           setLoading(false);
         }
-        // If there IS a session, onAuthStateChange(INITIAL_SESSION) will
-        // fire and handle initialisation — nothing extra needed here.
       });
     }
 
