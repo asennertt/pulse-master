@@ -320,8 +320,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("[AuthContext] signOut error (ignored):", err);
+    }
     clearAuth();
+    setLoading(false);
+    navigate("/auth", { replace: true });
   };
 
   const value: AuthContextType = {
