@@ -32,7 +32,7 @@ export function IngestionEngine() {
 
   const loadLogs = async () => {
     const { data } = await supabase
-      .from("pulse_ingestion_logs")
+      .from("ingestion_logs")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(20);
@@ -64,7 +64,7 @@ export function IngestionEngine() {
       // Only delete vehicles from CSV imports (not DMS/XML feeds)
       if (log.feed_type.toLowerCase().includes("csv")) {
         const { error: vehicleError } = await supabase
-          .from("pulse_vehicles")
+          .from("vehicles")
           .delete()
           .eq("dealer_id", log.dealer_id ?? "")
           .filter("created_at", "gte", new Date(new Date(log.created_at).getTime() - 10000).toISOString())
@@ -75,7 +75,7 @@ export function IngestionEngine() {
 
       // Delete the log entry itself
       const { error: logError } = await supabase
-        .from("pulse_ingestion_logs")
+        .from("ingestion_logs")
         .delete()
         .eq("id", log.id);
 

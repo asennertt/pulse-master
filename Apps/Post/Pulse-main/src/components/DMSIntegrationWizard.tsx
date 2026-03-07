@@ -90,7 +90,7 @@ export function DMSIntegrationWizard() {
 
   const loadLogs = async () => {
     const { data } = await supabase
-      .from("pulse_ingestion_logs")
+      .from("ingestion_logs")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(5);
@@ -196,7 +196,7 @@ export function DMSIntegrationWizard() {
     setDeletingAll(true);
     try {
       const { error } = await supabase
-        .from("pulse_vehicles")
+        .from("vehicles")
         .delete()
         .gte("created_at", "2000-01-01");
       if (error) throw error;
@@ -216,11 +216,11 @@ export function DMSIntegrationWizard() {
     try {
       const tables = [
         "sold_alerts",
-        "pulse_price_history",
+        "price_history",
         "vehicle_performance",
         "leads",
-        "pulse_vehicles",
-        "pulse_ingestion_logs",
+        "vehicles",
+        "ingestion_logs",
       ] as const;
 
       for (const table of tables) {

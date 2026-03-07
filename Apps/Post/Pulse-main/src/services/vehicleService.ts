@@ -4,7 +4,7 @@ import type { Vehicle, VehicleStatus } from "@/data/vehicles";
 // 1. Fetch vehicles for a SPECIFIC dealer
 export async function fetchVehicles(dealerId?: string): Promise<Vehicle[]> {
   let query = supabase
-    .from("pulse_vehicles")
+    .from("vehicles")
     .select("*")
     .order("created_at", { ascending: false });
 
@@ -31,7 +31,7 @@ export async function updateVehicleStatus(id: string, status: VehicleStatus): Pr
   }
 
   const { error } = await supabase
-    .from("pulse_vehicles")
+    .from("vehicles")
     .update(updates)
     .eq("id", id);
 
@@ -41,7 +41,7 @@ export async function updateVehicleStatus(id: string, status: VehicleStatus): Pr
 // 3. Toggle Facebook sync status for a vehicle
 export async function updateFacebookSync(id: string, synced: boolean): Promise<void> {
   const { error } = await supabase
-    .from("pulse_vehicles")
+    .from("vehicles")
     .update({
       synced_to_facebook: synced,
       updated_at: new Date().toISOString()

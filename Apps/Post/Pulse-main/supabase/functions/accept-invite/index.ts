@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
 
     // Assign dealer_user role
     const { error: roleErr } = await adminClient
-      .from("pulse_user_roles")
+      .from("user_roles")
       .insert({ user_id: user.id, role: "dealer_user" });
     if (roleErr && !roleErr.message.includes("duplicate")) throw roleErr;
 

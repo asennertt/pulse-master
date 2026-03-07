@@ -458,7 +458,7 @@ function UserManagement() {
 
   const loadPostingStats = async () => {
     const { data } = await supabase
-      .from("pulse_vehicles")
+      .from("vehicles")
       .select("posted_by_staff_id")
       .eq("synced_to_facebook", true)
       .not("posted_by_staff_id", "is", null);
