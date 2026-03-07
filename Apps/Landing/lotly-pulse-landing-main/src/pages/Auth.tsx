@@ -26,12 +26,24 @@ const PRODUCT_URLS: Record<string, string> = {
 /**
  * Redirects an authenticated user to the correct product app,
  * passing Supabase tokens via URL for cross-domain session handoff.
+ *
+ * Accepts an optional session parameter — when called from inside
+ * onAuthStateChange, pass the session directly to avoid the race
+ * condition where getSession() returns stale/null data.
  */
-const redirectToProduct = async (product: "post" | "value") => {
+const redirectToProduct = async (
+  product: "post" | "value",
+  existingSession?: { access_token: string; refresh_token: string } | null
+) => {
   const targetUrl = PRODUCT_URLS[product];
   if (!targetUrl) return false;
 
-  const { data: { session } } = await supabase.auth.getSession();
+  // Use the provided session, or fall back to fetching (for the getSession path)
+  let session = existingSession;
+  if (!session) {
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+  }
   if (!session) return false;
 
   const url = new URL(targetUrl);
@@ -122,9 +134,10 @@ const Auth = () => {
           }
 
           // Non-bundle or already-signed-in: redirect directly
+          // Pass session directly to avoid getSession() race condition
           const targetProduct = isBundle ? "post" : (mode as "post" | "value");
           if (targetProduct) {
-            const redirected = await redirectToProduct(targetProduct);
+            const redirected = await redirectToProduct(targetProduct, session);
             if (!redirected) {
               navigate("/");
             }
