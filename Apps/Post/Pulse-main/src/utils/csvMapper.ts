@@ -180,7 +180,7 @@ export async function importCSVWithMapping(
     throw new Error("No VIN column detected. A VIN column is required for import.");
   }
 
-  // Fetch existing VINs for this dealer
+  // Fetch existing VINs for this dealer to determine insert vs update
   const { data: dbVehicles } = await supabase
     .from("vehicles")
     .select("vin")
@@ -191,57 +191,47 @@ export async function importCSVWithMapping(
   let updatedVehicles = 0;
   let skipped = 0;
 
-  // Process rows in batches of 50 for efficiency
-  const BATCH_SIZE = 50;
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE);
-    const records: Record<string, any>[] = [];
+  for (const row of rows) {
+    const mapped = applyMapping(row, mapping);
+    if (!mapped.vin) { skipped++; continue; }
 
-    for (const row of batch) {
-      const mapped = applyMapping(row, mapping);
-      if (!mapped.vin) { skipped++; continue; }
+    const record: Record<string, any> = {
+      vin: mapped.vin,
+      make: mapped.make || "Unknown",
+      model: mapped.model || "Unknown",
+      year: mapped.year || new Date().getFullYear(),
+      trim: mapped.trim || null,
+      mileage: mapped.mileage || 0,
+      price: mapped.price || 0,
+      exterior_color: mapped.exterior_color || null,
+      days_on_lot: mapped.days_on_lot || 0,
+      images: mapped.images || [],
+      status: "available",
+      dealer_id: dealerId,
+    };
 
-      records.push({
-        vin: mapped.vin,
-        make: mapped.make || "Unknown",
-        model: mapped.model || "Unknown",
-        year: mapped.year || new Date().getFullYear(),
-        trim: mapped.trim || null,
-        mileage: mapped.mileage || 0,
-        price: mapped.price || 0,
-        exterior_color: mapped.exterior_color || null,
-        days_on_lot: mapped.days_on_lot || 0,
-        images: mapped.images || [],
-        status: "available",
-        dealer_id: dealerId,
-      });
-    }
-
-    if (records.length === 0) continue;
-
-    // Upsert batch
-    const { error } = await supabase
-      .from("vehicles")
-      .upsert(records, { onConflict: "vin", ignoreDuplicates: false });
-
-    if (error) {
-      console.error("Batch upsert error:", error.message);
-      // Fall back to individual inserts
-      for (const record of records) {
-        const { error: singleErr } = await supabase
-          .from("vehicles")
-          .upsert(record, { onConflict: "vin", ignoreDuplicates: false });
-        if (!singleErr) {
-          if (existingVins.has(record.vin)) updatedVehicles++;
-          else newVehicles++;
-        } else {
-          console.error(`Upsert failed for VIN ${record.vin}:`, singleErr.message);
-        }
+    if (existingVins.has(mapped.vin)) {
+      // Update existing vehicle
+      const { error } = await supabase
+        .from("vehicles")
+        .update(record)
+        .eq("vin", mapped.vin)
+        .eq("dealer_id", dealerId);
+      if (!error) {
+        updatedVehicles++;
+      } else {
+        console.error(`Update failed for VIN ${mapped.vin}:`, error.message);
       }
     } else {
-      for (const record of records) {
-        if (existingVins.has(record.vin)) updatedVehicles++;
-        else newVehicles++;
+      // Insert new vehicle
+      const { error } = await supabase
+        .from("vehicles")
+        .insert(record);
+      if (!error) {
+        newVehicles++;
+        existingVins.add(mapped.vin); // track in case of duplicate VINs in CSV
+      } else {
+        console.error(`Insert failed for VIN ${mapped.vin}:`, error.message);
       }
     }
   }
