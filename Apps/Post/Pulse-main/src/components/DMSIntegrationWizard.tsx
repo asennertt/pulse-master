@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/Contexts/AuthContext";
 import { DMSFieldMapper } from "@/components/DMSFieldMapper";
 import { toast } from "sonner";
+import { importCSVWithMapping } from "@/utils/csvMapper";
 import { Switch } from "@/components/ui/switch";
 import {
   Server, Upload, Plug, CheckCircle2, ChevronRight, Loader2,
@@ -136,29 +137,21 @@ export function DMSIntegrationWizard() {
   };
 
   const runAiImport = async () => {
-    if (!csvFile) return;
+    if (!csvFile || !activeDealerId) return;
     setAiImporting(true);
     setAiResult(null);
     try {
-      const formData = new FormData();
-      formData.append("file", csvFile);
-      if (activeDealerId) formData.append("dealer_id", activeDealerId);
-
-      const { data, error } = await supabase.functions.invoke("ai-csv-map", {
-        body: formData,
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await importCSVWithMapping(csvFile, activeDealerId);
 
       setAiResult(data);
       setConnected(true);
-      toast.success("AI Import Complete!", {
+      toast.success("Import Complete!", {
         description: `${data.mapped_columns} columns mapped · ${data.new_vehicles} new vehicles · ${data.updated_vehicles} updated`,
       });
       loadLogs();
       setStep("controls");
     } catch (e: any) {
-      toast.error("AI import failed", { description: e.message });
+      toast.error("Import failed", { description: e.message });
     } finally {
       setAiImporting(false);
     }
@@ -435,10 +428,10 @@ export function DMSIntegrationWizard() {
         <div className="glass-card rounded-xl p-6 space-y-5">
           <div className="flex items-center gap-2 mb-1">
             <Upload className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-bold text-foreground">CSV Upload — AI Auto-Mapping</h3>
+            <h3 className="text-sm font-bold text-foreground">CSV Upload — Auto-Mapping</h3>
           </div>
           <p className="text-xs text-muted-foreground">
-            Drop your inventory CSV and AI will automatically detect the column names, map them to the right fields, and import everything — no manual configuration needed.
+            Drop your inventory CSV and we'll automatically detect the column names, map them to the right fields, and import everything — no manual configuration needed.
           </p>
 
           {/* Drop zone */}
@@ -476,7 +469,7 @@ export function DMSIntegrationWizard() {
           {aiResult && (
             <div className="rounded-lg bg-success/10 border border-success/20 p-4 space-y-2">
               <div className="flex items-center gap-2 text-success text-sm font-semibold">
-                <Sparkles className="h-4 w-4" /> AI Mapping Complete
+                <Sparkles className="h-4 w-4" /> Mapping Complete
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs text-center">
                 <div className="rounded-md bg-background/50 p-2">
@@ -512,9 +505,9 @@ export function DMSIntegrationWizard() {
               className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {aiImporting ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> AI Mapping & Importing...</>
+                <><Loader2 className="h-4 w-4 animate-spin" /> Mapping & Importing...</>
               ) : (
-                <><Sparkles className="h-4 w-4" /> Import with AI Mapping</>
+                <><Sparkles className="h-4 w-4" /> Import with Auto Mapping</>
               )}
             </button>
             <button onClick={() => setStep("select")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
