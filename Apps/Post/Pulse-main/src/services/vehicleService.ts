@@ -9,7 +9,7 @@ export async function fetchVehicles(dealerId?: string): Promise<Vehicle[]> {
     .order("created_at", { ascending: false });
 
   if (dealerId) {
-    query = query.eq("dealer_id", dealerId);
+    query = query.eq("dealership_id", dealerId);
   }
 
   const { data, error } = await query;

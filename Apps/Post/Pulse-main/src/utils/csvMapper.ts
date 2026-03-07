@@ -184,7 +184,7 @@ export async function importCSVWithMapping(
   const { data: dbVehicles } = await supabase
     .from("vehicles")
     .select("vin")
-    .eq("dealer_id", dealerId);
+    .eq("dealership_id", dealerId);
   const existingVins = new Set((dbVehicles || []).map((v: any) => v.vin));
 
   let newVehicles = 0;
@@ -207,7 +207,7 @@ export async function importCSVWithMapping(
       days_on_lot: mapped.days_on_lot || 0,
       images: mapped.images || [],
       status: "available",
-      dealer_id: dealerId,
+      dealership_id: dealerId,
     };
 
     if (existingVins.has(mapped.vin)) {
@@ -216,7 +216,7 @@ export async function importCSVWithMapping(
         .from("vehicles")
         .update(record)
         .eq("vin", mapped.vin)
-        .eq("dealer_id", dealerId);
+        .eq("dealership_id", dealerId);
       if (!error) {
         updatedVehicles++;
       } else {
@@ -246,7 +246,7 @@ export async function importCSVWithMapping(
     images_fetched: 0,
     status: "success",
     message: `Auto-mapped ${Object.keys(mapping).length} columns · ${newVehicles} new · ${updatedVehicles} updated · ${skipped} skipped (no VIN)`,
-    dealer_id: dealerId,
+    dealership_id: dealerId,
   });
 
   return {
