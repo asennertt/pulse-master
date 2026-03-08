@@ -43,6 +43,8 @@ serve(async (req) => {
 
     const systemPrompt = `You are a top-tier automotive digital marketer. Create a high-conversion Facebook Marketplace listing.
 
+IMPORTANT: Output ONLY the listing text. Do NOT include any preamble, introduction, commentary, or explanation like "Here's a listing..." or "Okay, here's...". Start directly with the headline.
+
 Structure it with:
 1. 🏷️ Catchy Headline (one punchy line)
 2. ✅ Key Features Bullet Points (5-7 highlights)
@@ -100,6 +102,9 @@ VIN: ${vehicle.vin}`;
 
     const data = await response.json();
     let content = data.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to generate description.";
+
+    // Strip any AI preamble (e.g. "Okay, here's a listing...")
+    content = content.replace(/^(Okay|Sure|Here'?s?|Alright)[^\n]*\n+/i, "").trim();
 
     // Post-generation compliance scan
     const complianceFlags: string[] = [];
