@@ -611,7 +611,7 @@ function SystemHealthView() {
       </div>
       <div className="glass-card rounded-lg p-4 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Service Status</h3>
-        {["AI Gateway (Lovable)", "Database (Cloud)", "DMS Ingestion Engine", "Facebook Catalog Sync", "Lead Webhook Endpoint"].map(name => (
+        {["AI Gateway (Gemini)", "Database (Cloud)", "DMS Ingestion Engine", "Facebook Catalog Sync", "Lead Webhook Endpoint"].map(name => (
           <div key={name} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
             <span className="text-xs text-foreground">{name}</span>
             <div className="flex items-center gap-1.5">

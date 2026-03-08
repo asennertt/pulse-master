@@ -523,7 +523,7 @@ function SystemHealth() {
       <div className="glass-card rounded-lg p-4 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Service Status</h3>
         {[
-          { name: "AI Gateway (Lovable)", status: "operational" },
+          { name: "AI Gateway (Gemini)", status: "operational" },
           { name: "Database (Cloud)", status: "operational" },
           { name: "DMS Ingestion Engine", status: "operational" },
           { name: "Facebook Catalog Sync", status: "operational" },

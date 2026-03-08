@@ -26,7 +26,7 @@ These older migration locations are **deprecated** and should not be modified:
 
 - `sql/001_unified_auth_migration.sql` (Value-origin auth)
 - `supabase/migrations/` (hand-written shared RPCs)
-- `Apps/Post/Pulse-main/supabase/migrations/` (Lovable-generated Post migrations)
+- `Apps/Post/Pulse-main/supabase/migrations/` (legacy Post migrations)
 - `Apps/Landing/lotly-pulse-landing-main/supabase/migrations/` (Landing duplicate)
 
 ## Adding Pulse Value Tables (Future)
