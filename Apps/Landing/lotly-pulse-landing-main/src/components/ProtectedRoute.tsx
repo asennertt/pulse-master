@@ -23,7 +23,7 @@ export const ProtectedRoute = ({ children, requiredModule }: ProtectedRouteProps
 
       // 2. Fetch user roles from the Neon-backed user_roles table
       const { data: roles, error } = await supabase
-        .from('user_roles')
+        .from('pulse_user_roles')
         .select('role')
         .eq('user_id', session.user.id);
 

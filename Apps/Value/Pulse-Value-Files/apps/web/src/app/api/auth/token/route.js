@@ -1,42 +1,64 @@
-import { getToken } from '@auth/core/jwt';
+import { supabase } from '@/lib/supabase';
 
-export async function GET(request) {
-	const [token, jwt] = await Promise.all([
-		getToken({
-			req: request,
-			secret: process.env.AUTH_SECRET,
-			secureCookie: process.env.AUTH_URL.startsWith('https'),
-			raw: true,
-		}),
-		getToken({
-			req: request,
-			secret: process.env.AUTH_SECRET,
-			secureCookie: process.env.AUTH_URL.startsWith('https'),
-		}),
-	]);
+/**
+ * POST /api/auth/token
+ *
+ * Exchanges an email + password (or a magic-link token) for a Supabase
+ * access_token + refresh_token pair that the Landing page can relay to
+ * this app via URL params on a redirect.
+ *
+ * Body (JSON):
+ *   { email, password }          — password sign-in
+ *   { token, type }               — email OTP / magic-link verification
+ *
+ * Response (JSON):
+ *   { access_token, refresh_token, user }
+ */
+export async function POST(request) {
+  try {
+    const body = await request.json();
 
-	if (!jwt) {
-		return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-			status: 401,
-			headers: {
-				'Content-Type': 'application/json',
-			},
-		});
-	}
+    let session;
+    let user;
 
-	return new Response(
-		JSON.stringify({
-			jwt: token,
-			user: {
-				id: jwt.sub,
-				email: jwt.email,
-				name: jwt.name,
-			},
-		}),
-		{
-			headers: {
-				'Content-Type': 'application/json',
-			},
-		}
-	);
+    if (body.token && body.type) {
+      // Magic-link / OTP flow
+      const { data, error } = await supabase.auth.verifyOtp({
+        token: body.token,
+        type: body.type,
+        email: body.email,
+      });
+      if (error) throw error;
+      session = data.session;
+      user = data.user;
+    } else if (body.email && body.password) {
+      // Password sign-in flow
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: body.email,
+        password: body.password,
+      });
+      if (error) throw error;
+      session = data.session;
+      user = data.user;
+    } else {
+      return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(
+      JSON.stringify({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        user,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message ?? 'Unknown error' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }

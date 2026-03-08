@@ -1,65 +1,80 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "./Contexts/AuthContext";
 import { ProtectedRoute } from "./Contexts/ProtectedRoute";
 
-// Import your pages (paths may vary based on your structure)
-import Index from "./pages/Index";
+// Pages
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import AdminPanel from "./pages/AdminPanel";
-import Inventory from "./pages/Inventory";
-import Billing from "./pages/Billing";
+import PostDashboard from "./pages/PostDashboard";
+import Admin from "./pages/Admin";
+import SuperAdmin from "./pages/SuperAdmin";
+import Onboarding from "./pages/Onboarding";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import NotFound from "./pages/NotFound";
+
+/**
+ * Redirects / → /auth while preserving all query-string parameters.
+ * This is critical for the cross-domain auth flow: the Landing page
+ * sends access_token + refresh_token as query params, and a plain
+ * <Navigate to="/auth" replace /> would strip them.
+ */
+function RedirectToAuth() {
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString();
+  const target = qs ? `/auth?${qs}` : "/auth";
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   return (
     <BrowserRouter>
-      {/* 1. Wrap the entire app in AuthProvider so useAuth() works everywhere */}
       <AuthProvider>
         <Routes>
           {/* PUBLIC ROUTES */}
           <Route path="/auth" element={<Auth />} />
-          <Route path="/" element={<Index />} />
+          <Route path="/" element={<RedirectToAuth />} />
 
-          {/* GENERAL PROTECTED ROUTES (Any logged-in user) */}
+          {/* PROTECTED ROUTES */}
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <PostDashboard />
               </ProtectedRoute>
             }
           />
 
-          {/* DEALER ADMIN + SUBSCRIBED ONLY */}
           <Route
-            path="/inventory"
-            element={
-              <ProtectedRoute requireDealerAdmin requireSubscription>
-                <Inventory />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* BILLING (Protected but doesn't require subscription to view) */}
-          <Route
-            path="/billing"
+            path="/onboarding"
             element={
               <ProtectedRoute>
-                <Billing />
+                <Onboarding />
               </ProtectedRoute>
             }
           />
 
-          {/* SUPER ADMIN ONLY */}
+          {/* ADMIN ROUTES */}
           <Route
             path="/admin"
             element={
-              <ProtectedRoute requireSuperAdmin>
-                <AdminPanel />
+              <ProtectedRoute>
+                <Admin />
               </ProtectedRoute>
             }
           />
+
+          <Route
+            path="/super-admin"
+            element={
+              <ProtectedRoute requireSuperAdmin>
+                <SuperAdmin />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* LEGAL */}
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
 
           {/* 404 CATCH-ALL */}
           <Route path="*" element={<NotFound />} />

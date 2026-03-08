@@ -47,7 +47,7 @@ const Integration = () => {
             Connects to everything you already use
           </h2>
           <p className="text-base text-muted-foreground leading-relaxed mb-7 max-w-[480px] mx-auto lg:mx-0">
-            Pulse integrates directly into your existing Lotly Auto account — a seamless connection that lets you post inventory to marketplace and appraise cars directly in Lotly Auto. Use it as a standalone product or sync directly with Lotly Auto for a fully connected experience.
+            Pulse integrates directly into your existing Lotly Auto account — a seamless connection that lets you post inventory to marketplace directly in Lotly Auto. Use it as a standalone product or sync directly with Lotly Auto for a fully connected experience.
           </p>
           <div className="flex items-center gap-6 mb-7 p-4 rounded-xl bg-secondary/50 border border-border w-fit mx-auto lg:mx-0">
             <img src={pulseHeroLogo} alt="Pulse by Lotly Automotive" className="h-14 object-contain" />

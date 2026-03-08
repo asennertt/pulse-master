@@ -259,7 +259,15 @@ const Index = () => {
                 onClick={() => navigate("/super-admin")}
                 className="flex items-center gap-1.5 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/20 transition-colors"
               >
-                <Shield className="h-3.5 w-3.5" /> Admin
+                <Shield className="h-3.5 w-3.5" /> Super Admin
+              </button>
+            )}
+            {isDealerAdmin && !isSuperAdmin && (
+              <button
+                onClick={() => navigate("/admin")}
+                className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Shield className="h-3.5 w-3.5" /> Dealer Admin
               </button>
             )}
             <button onClick={signOut} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">

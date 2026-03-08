@@ -2,13 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import logoTransparent from "@/assets/logo_transparent.png";
-import { Menu, X, ChevronDown, LayoutDashboard } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Menu, X } from "lucide-react";
 
 const navLinks = ["Products", "Integration", "How It Works", "Pricing", "FAQ"];
 
@@ -47,27 +41,9 @@ const Navbar = () => {
       </ul>
 
       <div className="flex items-center gap-2.5 flex-shrink-0">
-        {/* --- DUAL SIGN-IN DROPDOWN (Maintained Original Button Sizes) --- */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex text-muted-foreground gap-1.5">
-              Sign in
-              <ChevronDown className="w-3 h-3 opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 bg-background/95 backdrop-blur-lg border-border">
-            <DropdownMenuItem asChild>
-              <Link to="/auth?mode=post" className="cursor-pointer font-bold italic text-xs uppercase tracking-tighter">
-                Pulse Post Terminal
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/auth?mode=value" className="cursor-pointer font-bold italic text-xs uppercase tracking-tighter">
-                Pulse Value Terminal
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button variant="ghost" size="sm" className="hidden sm:inline-flex text-muted-foreground" asChild>
+          <Link to="/auth?mode=post">Sign in</Link>
+        </Button>
 
         <Button size="sm" className="shadow-md font-bold italic uppercase tracking-tighter" asChild>
           <a href="#pricing">Get Started</a>
@@ -96,8 +72,7 @@ const Navbar = () => {
             </a>
           ))}
           <div className="h-px bg-border my-2" />
-          <Link to="/auth?mode=post" className="text-primary font-bold italic">Post Terminal</Link>
-          <Link to="/auth?mode=value" className="text-primary font-bold italic">Value Terminal</Link>
+          <Link to="/auth?mode=post" className="text-primary font-bold italic">Sign in</Link>
         </div>
       )}
     </nav>

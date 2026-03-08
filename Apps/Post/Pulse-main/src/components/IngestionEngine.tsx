@@ -16,7 +16,7 @@ interface IngestionLog {
   status: string;
   message: string | null;
   created_at: string;
-  dealer_id: string | null;
+  dealership_id: string | null;
 }
 
 export function IngestionEngine() {
@@ -66,7 +66,7 @@ export function IngestionEngine() {
         const { error: vehicleError } = await supabase
           .from("vehicles")
           .delete()
-          .eq("dealer_id", log.dealer_id ?? "")
+          .eq("dealership_id", log.dealership_id ?? "")
           .filter("created_at", "gte", new Date(new Date(log.created_at).getTime() - 10000).toISOString())
           .filter("created_at", "lte", new Date(new Date(log.created_at).getTime() + 60000).toISOString());
 

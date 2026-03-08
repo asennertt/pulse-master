@@ -151,14 +151,14 @@ function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => v
   const loadDealers = async () => {
     const [dealerRes, settingsRes, dmsPullRes] = await Promise.all([
       supabase.from("dealerships").select("*").order("created_at", { ascending: false }),
-      supabase.from("dealer_settings").select("dealer_id, fb_token_status"),
+      supabase.from("dealer_settings").select("dealership_id, fb_token_status"),
       supabase.from("activation_queue").select("*").eq("request_type", "dms_pull").eq("status", "pending").order("created_at", { ascending: false }),
     ]);
     const dealerList = (dealerRes.data as unknown as Dealership[]) || [];
     setDealers(dealerList);
     const map: Record<string, string> = {};
     for (const s of (settingsRes.data || []) as any[]) {
-      if (s.dealer_id) map[s.dealer_id] = s.fb_token_status || "not_connected";
+      if (s.dealership_id) map[s.dealership_id] = s.fb_token_status || "not_connected";
     }
     setFbStatusMap(map);
     const dealerMap = new Map(dealerList.map(d => [d.id, d.name]));
@@ -611,7 +611,7 @@ function SystemHealthView() {
       </div>
       <div className="glass-card rounded-lg p-4 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Service Status</h3>
-        {["AI Gateway (Lovable)", "Database (Cloud)", "DMS Ingestion Engine", "Facebook Catalog Sync", "Lead Webhook Endpoint"].map(name => (
+        {["AI Gateway (Gemini)", "Database (Cloud)", "DMS Ingestion Engine", "Facebook Catalog Sync", "Lead Webhook Endpoint"].map(name => (
           <div key={name} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
             <span className="text-xs text-foreground">{name}</span>
             <div className="flex items-center gap-1.5">
@@ -641,11 +641,11 @@ function AuditLog() {
     ]);
     setDealers((dealersRes.data as any[]) || []);
     const dealerMap = new Map(((dealersRes.data as any[]) || []).map((d: any) => [d.id, d.name]));
-    setLogs(((logsRes.data as any[]) || []).map((l: any) => ({ ...l, dealership_name: dealerMap.get(l.dealer_id) || "Unknown" })));
+    setLogs(((logsRes.data as any[]) || []).map((l: any) => ({ ...l, dealership_name: dealerMap.get(l.dealership_id) || "Unknown" })));
     setLoading(false);
   };
 
-  const filtered = dealerFilter ? logs.filter(l => l.dealer_id === dealerFilter) : logs;
+  const filtered = dealerFilter ? logs.filter(l => l.dealership_id === dealerFilter) : logs;
 
   return (
     <div className="space-y-4">

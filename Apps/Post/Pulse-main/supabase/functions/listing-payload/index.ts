@@ -37,33 +37,23 @@ serve(async (req) => {
     // If no description provided, generate one via AI
     let listingDescription = description || "";
     if (!listingDescription) {
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (LOVABLE_API_KEY) {
+      const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+      if (GEMINI_API_KEY) {
         try {
-          const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-3-flash-preview",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a top-tier automotive digital marketer. Create a concise, high-conversion Facebook Marketplace listing with a catchy headline, 5 key features, mileage callout, and a CTA. Under 200 words. Professional tone.",
-                },
-                {
-                  role: "user",
-                  content: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim || ""}, ${vehicle.mileage} miles, ${vehicle.exterior_color || "N/A"} exterior, VIN: ${vehicle.vin}`,
-                },
-              ],
-              stream: false,
-            }),
-          });
+          const prompt = `You are a top-tier automotive digital marketer. Create a concise, high-conversion Facebook Marketplace listing with a catchy headline, 5 key features, mileage callout, and a CTA. Under 200 words. Professional tone.\n\n${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim || ""}, ${vehicle.mileage} miles, ${vehicle.exterior_color || "N/A"} exterior, VIN: ${vehicle.vin}`;
+          const aiResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+              }),
+            }
+          );
           if (aiResp.ok) {
             const aiData = await aiResp.json();
-            listingDescription = aiData.choices?.[0]?.message?.content || "";
+            listingDescription = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
           }
         } catch (e) {
           console.error("AI generation failed, using fallback:", e);

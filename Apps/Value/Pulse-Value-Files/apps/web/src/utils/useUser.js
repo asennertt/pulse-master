@@ -1,32 +1,17 @@
-import { useSession } from '@auth/create/react';
-import React from 'react';
+import { useSupabaseAuth } from '@/lib/supabase-auth-provider';
 
-export const useUser = () => {
-	const { data: session, status } = useSession();
-	const id = session?.user?.id;
+/**
+ * useUser — convenience hook that returns the user object.
+ *
+ * Usage:
+ *   const { user } = useUser();
+ *   // or
+ *   const user = useUser().user;
+ */
+export function useUser() {
+  const { user, loading } = useSupabaseAuth();
+  return { user, loading, data: user };
+}
 
-	const [user, setUser] = React.useState(session?.user ?? null);
-
-	const fetchUser = React.useCallback(async (session) => {
-		return session?.user;
-	}, []);
-
-	const refetchUser = React.useCallback(() => {
-		if (id) {
-			fetchUser(session).then(setUser);
-		} else {
-			setUser(null);
-		}
-	}, [fetchUser, id]);
-
-	React.useEffect(refetchUser, [refetchUser]);
-
-	return {
-		user,
-		data: user,
-		loading: status === 'loading' || (status === 'authenticated' && !user),
-		refetch: refetchUser,
-	};
-};
-
+// Default export for pages that use: import useUser from "@/utils/useUser"
 export default useUser;

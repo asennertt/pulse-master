@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Zap, BarChart3 } from "lucide-react";
+import { Plus, Zap } from "lucide-react";
 import pulseHeroLogo from "@/assets/pulse-hero-logo.png";
 import pulseInlineLogo from "@/assets/pulse-inline-logo.png";
 
@@ -10,13 +10,6 @@ const postStats = [
   { value: "12,400+", label: "Cars Posted" },
   { value: "60s", label: "Avg Post Time" },
   { value: "3.2×", label: "More Leads" }
-];
-
-const valueStats = [
-  { value: "14,750+", label: "Appraisals Done" },
-  { value: "98%", label: "Accuracy" },
-  { value: "<5s", label: "Avg. Speed" },
-  { value: "Live", label: "Data Streaming" }
 ];
 
 const Hero = () => {
@@ -111,11 +104,10 @@ const Hero = () => {
         </h1>
 
         <p className="text-lg text-muted-foreground leading-relaxed max-w-[560px] mx-auto mb-9">
-          Post your entire lot to Facebook Marketplace with AI descriptions and smart image sorting — and appraise vehicles instantly with live market data and VIN-powered valuations.
+          Post your entire lot to Facebook Marketplace in minutes — with AI descriptions, smart image sorting, and automatic DMS sync.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12 flex-wrap">
-          {/* Main Action Terminals */}
           <Button 
             size="lg" 
             className="shadow-lg text-[15px] gap-2 min-w-[200px] font-bold italic"
@@ -124,33 +116,14 @@ const Hero = () => {
             <Zap className="w-4 h-4 fill-current text-yellow-400" />
             POST TERMINAL
           </Button>
-          
-          <Button 
-            size="lg" 
-            variant="secondary"
-            className="shadow-lg text-[15px] gap-2 min-w-[200px] font-bold italic border border-primary/20"
-            onClick={() => navigate("/auth?mode=value")}
-          >
-            <BarChart3 className="w-4 h-4 text-primary" />
-            VALUE TERMINAL
-          </Button>
 
           <Button variant="outline" size="lg" className="text-[15px]" asChild>
             <a href="#products">See features</a>
           </Button>
         </div>
 
-        <div className="flex items-center justify-center gap-8 mb-4 flex-wrap opacity-90">
-          {postStats.map((s) =>
-            <div key={s.label} className="text-center">
-              <div className="text-xl font-bold text-foreground tracking-tight">{s.value}</div>
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{s.label}</div>
-            </div>
-          )}
-        </div>
-
         <div className="flex items-center justify-center gap-8 mb-8 flex-wrap opacity-90">
-          {valueStats.map((s) =>
+          {postStats.map((s) =>
             <div key={s.label} className="text-center">
               <div className="text-xl font-bold text-foreground tracking-tight">{s.value}</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{s.label}</div>
