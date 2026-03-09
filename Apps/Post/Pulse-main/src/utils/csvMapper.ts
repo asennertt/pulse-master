@@ -14,9 +14,10 @@ const APP_FIELDS = [
   { field: "year",           keywords: ["year", "model_year", "modelyear", "yr"] },
   { field: "trim",           keywords: ["trim", "trim_level", "trimlevel", "package", "trim_package"] },
   { field: "mileage",        keywords: ["mileage", "miles", "odometer", "odo", "km", "kilometers", "mileage_reading"] },
-  { field: "price",          keywords: ["price", "asking_price", "askingprice", "retail_price", "retailprice", "list_price", "listprice", "selling_price", "sellingprice", "msrp", "cost", "sticker_price"] },
+  { field: "price",          keywords: ["sale_price", "saleprice", "selling_price", "sellingprice", "price", "asking_price", "askingprice", "retail_price", "retailprice", "list_price", "listprice", "internet_price", "internetprice", "dealer_price", "dealerprice", "advertised_price", "advertisedprice", "final_price", "finalprice", "our_price", "ourprice", "lot_price", "lotprice", "vehicle_price", "vehicleprice", "unit_price", "unitprice", "net_price", "netprice", "cash_price", "cashprice", "special_price", "specialprice", "discounted_price", "discountedprice", "offer_price", "offerprice", "market_price", "marketprice", "sticker_price", "stickerprice", "window_price", "windowprice", "amount", "total_price", "totalprice", "cost"] },
   { field: "exterior_color", keywords: ["exterior_color", "exteriorcolor", "ext_color", "extcolor", "color", "paint", "paint_color", "exterior"] },
   { field: "images",         keywords: ["images", "image", "photos", "photo", "photo_url", "image_url", "imageurl", "photourl", "picture", "pictures", "pic", "media"] },
+  { field: "body_style",     keywords: ["body_style", "bodystyle", "body_type", "bodytype", "vehicle_type", "vehicletype", "style"] },
   { field: "days_on_lot",    keywords: ["days_on_lot", "daysonlot", "days_in_stock", "daysinstock", "lot_days", "lotdays", "age", "stock_days", "stockdays", "days_listed"] },
 ] as const;
 
@@ -31,20 +32,23 @@ export function mapColumns(csvHeaders: string[]): Record<string, AppField> {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  // Score how well a CSV header matches an app field
+  // Score how well a CSV header matches an app field.
+  // Keywords listed earlier are preferred (small bonus) so e.g.
+  // "sale_price" (index 0) beats "msrp" (last) when both score 100.
   const score = (header: string, field: typeof APP_FIELDS[number]): number => {
     const norm = normalize(header);
-    // Exact keyword match
-    for (const kw of field.keywords) {
-      if (norm === normalize(kw)) return 100;
+    const kwCount = field.keywords.length;
+    // Exact keyword match — earlier keyword index → higher score
+    for (let i = 0; i < kwCount; i++) {
+      if (norm === normalize(field.keywords[i])) return 100 + (kwCount - i);
     }
     // Keyword contained in header
-    for (const kw of field.keywords) {
-      if (norm.includes(normalize(kw))) return 80;
+    for (let i = 0; i < kwCount; i++) {
+      if (norm.includes(normalize(field.keywords[i]))) return 80 + (kwCount - i);
     }
     // Header contained in keyword
-    for (const kw of field.keywords) {
-      if (normalize(kw).includes(norm) && norm.length >= 3) return 60;
+    for (let i = 0; i < kwCount; i++) {
+      if (normalize(field.keywords[i]).includes(norm) && norm.length >= 3) return 60 + (kwCount - i);
     }
     return 0;
   };
@@ -204,6 +208,7 @@ export async function importCSVWithMapping(
       mileage: mapped.mileage || 0,
       price: mapped.price || 0,
       exterior_color: mapped.exterior_color || null,
+      body_style: mapped.body_style || null,
       days_on_lot: mapped.days_on_lot || 0,
       images: mapped.images || [],
       status: "available",
