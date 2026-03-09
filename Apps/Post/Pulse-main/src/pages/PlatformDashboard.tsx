@@ -10,7 +10,8 @@ import {
   ChevronDown, ChevronUp, CreditCard, Plus,
   Link2, LogOut, Users, Loader2, Facebook, KeyRound, RefreshCw,
   Power, FileText, FolderSync, LayoutDashboard, Settings,
-  BarChart3, Bell, Globe, Database,
+  BarChart3, Bell, Globe, Database, DollarSign, ExternalLink,
+  AlertTriangle, ArrowUpRight, Ban,
 } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
 
@@ -47,7 +48,7 @@ interface UsageSummary {
   action_counts: Record<string, number>;
 }
 
-type PlatformTab = "overview" | "dealers" | "activation" | "usage" | "health" | "audit" | "settings";
+type PlatformTab = "overview" | "dealers" | "activation" | "usage" | "billing" | "health" | "audit" | "settings";
 
 // ────────────────── Main Page ──────────────────
 export default function PlatformDashboard() {
@@ -81,7 +82,8 @@ export default function PlatformDashboard() {
     { key: "overview", label: "Overview", icon: LayoutDashboard, section: "Dashboard" },
     { key: "dealers", label: "Dealers", icon: Building2, section: "Management" },
     { key: "activation", label: "Verification", icon: Clock },
-    { key: "usage", label: "Usage & Billing", icon: CreditCard },
+    { key: "usage", label: "Usage", icon: BarChart3 },
+    { key: "billing", label: "Billing", icon: CreditCard, section: "Finance" },
     { key: "audit", label: "Audit Log", icon: FileText, section: "System" },
     { key: "health", label: "System Health", icon: Activity },
     { key: "settings", label: "Settings", icon: Settings },
@@ -174,6 +176,7 @@ export default function PlatformDashboard() {
           {tab === "dealers" && <DealerOverview onImpersonate={handleImpersonate} />}
           {tab === "activation" && <VerificationQueue />}
           {tab === "usage" && <APIUsageMonitor />}
+          {tab === "billing" && <BillingOverview />}
           {tab === "audit" && <AuditLog />}
           {tab === "health" && <SystemHealthView />}
           {tab === "settings" && <PlatformSettings />}
@@ -746,6 +749,353 @@ function APIUsageMonitor() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ────────────────── Billing Overview (Stripe) ──────────────────
+interface BillingCustomer {
+  customer_id: string;
+  email: string | null;
+  name: string | null;
+  created: number;
+  dealership: { id: string; name: string; subscription_tier: string; status: string } | null;
+  subscriptions: {
+    id: string;
+    status: string;
+    current_period_start: number;
+    current_period_end: number;
+    cancel_at_period_end: boolean;
+    created: number;
+    items: { price_id: string; product_id: string; product_name: string; unit_amount: number; currency: string; interval: string | null }[];
+  }[];
+  monthly_amount_cents: number;
+}
+
+interface BillingSummary {
+  total_customers: number;
+  active_subscribers: number;
+  mrr_cents: number;
+  currency: string;
+}
+
+function BillingOverview() {
+  const { session } = useAuth();
+  const [customers, setCustomers] = useState<BillingCustomer[]>([]);
+  const [summary, setSummary] = useState<BillingSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "past_due" | "canceled" | "none">("all");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => { loadBilling(); }, []);
+
+  const loadBilling = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("admin-billing", {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (fnError) throw new Error(fnError.message);
+      if (data?.error) throw new Error(data.error);
+      setCustomers(data.customers || []);
+      setSummary(data.summary || null);
+    } catch (err: any) {
+      setError(err.message || "Failed to load billing data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCents = (cents: number) => {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+  };
+
+  const formatDate = (ts: number) => {
+    return new Date(ts * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const getStatusBadge = (status: string) => {
+    const styles: Record<string, string> = {
+      active: "bg-success/15 text-success border-success/25",
+      trialing: "bg-primary/15 text-primary border-primary/25",
+      past_due: "bg-warning/15 text-warning border-warning/25",
+      canceled: "bg-destructive/15 text-destructive border-destructive/25",
+    };
+    return styles[status] || "bg-secondary text-muted-foreground border-border";
+  };
+
+  const getCustomerStatus = (c: BillingCustomer): "active" | "past_due" | "canceled" | "none" => {
+    if (c.subscriptions.some(s => s.status === "active" || s.status === "trialing")) return "active";
+    if (c.subscriptions.some(s => s.status === "past_due")) return "past_due";
+    if (c.subscriptions.some(s => s.status === "canceled")) return "canceled";
+    return "none";
+  };
+
+  const filtered = useMemo(() => {
+    return customers.filter(c => {
+      const matchSearch = !searchTerm ||
+        (c.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.dealership?.name || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchStatus = statusFilter === "all" || getCustomerStatus(c) === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [customers, searchTerm, statusFilter]);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+
+  if (error) return (
+    <div className="space-y-4">
+      <div className="glass-card rounded-xl p-6 text-center space-y-3">
+        <AlertTriangle className="h-8 w-8 text-warning mx-auto" />
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <button onClick={loadBilling} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+          <RefreshCw className="h-3.5 w-3.5" /> Retry
+        </button>
+      </div>
+    </div>
+  );
+
+  const statusCounts = {
+    all: customers.length,
+    active: customers.filter(c => getCustomerStatus(c) === "active").length,
+    past_due: customers.filter(c => getCustomerStatus(c) === "past_due").length,
+    canceled: customers.filter(c => getCustomerStatus(c) === "canceled").length,
+    none: customers.filter(c => getCustomerStatus(c) === "none").length,
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-success/10 border border-success/20 flex items-center justify-center">
+              <DollarSign className="h-5 w-5 text-success" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{summary ? formatCents(summary.mrr_cents) : "$0"}</div>
+              <div className="text-xs text-muted-foreground">Monthly Recurring Revenue</div>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{summary?.active_subscribers || 0}</div>
+              <div className="text-xs text-muted-foreground">Active Subscribers</div>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-secondary border border-border flex items-center justify-center">
+              <Users className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{summary?.total_customers || 0}</div>
+              <div className="text-xs text-muted-foreground">Total Stripe Customers</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stripe Dashboard Link */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+          <CreditCard className="h-5 w-5 text-primary" /> Customer Billing
+        </h2>
+        <a
+          href="https://dashboard.stripe.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ExternalLink className="h-3.5 w-3.5" /> Stripe Dashboard
+        </a>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search by name, email, or dealership..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+        </div>
+        <div className="flex gap-1.5">
+          {(["all", "active", "past_due", "canceled", "none"] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${
+                statusFilter === s
+                  ? "bg-primary/15 text-primary border-primary/25"
+                  : "bg-secondary text-muted-foreground border-border hover:text-foreground"
+              }`}
+            >
+              {s === "all" ? "All" : s === "past_due" ? "Past Due" : s === "none" ? "No Sub" : s.charAt(0).toUpperCase() + s.slice(1)}
+              <span className="ml-1 opacity-60">({statusCounts[s]})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Customer List */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">No customers match your filters</div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(c => {
+            const custStatus = getCustomerStatus(c);
+            const isExpanded = expanded === c.customer_id;
+            return (
+              <div key={c.customer_id} className="glass-card rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setExpanded(isExpanded ? null : c.customer_id)}
+                  className="w-full flex items-center gap-4 px-4 py-3 text-left"
+                >
+                  {/* Status indicator */}
+                  <div className={`h-2 w-2 rounded-full shrink-0 ${
+                    custStatus === "active" ? "bg-success" :
+                    custStatus === "past_due" ? "bg-warning animate-pulse" :
+                    custStatus === "canceled" ? "bg-destructive" : "bg-muted-foreground/30"
+                  }`} />
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground text-sm truncate">
+                        {c.dealership?.name || c.name || c.email || "Unknown"}
+                      </span>
+                      {c.dealership && (
+                        <span className="text-[9px] font-mono uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                          Linked
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">{c.email || "No email"}</div>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="text-right shrink-0">
+                    <div className={`text-lg font-bold ${c.monthly_amount_cents > 0 ? "text-success" : "text-muted-foreground"}`}>
+                      {c.monthly_amount_cents > 0 ? formatCents(c.monthly_amount_cents) : "$0"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">/month</div>
+                  </div>
+
+                  {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
+
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-border/50 pt-3 space-y-3">
+                    {/* Customer details */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="rounded-md bg-secondary/60 border border-border p-2.5">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">Stripe ID</div>
+                        <div className="text-xs font-mono text-foreground truncate">{c.customer_id}</div>
+                      </div>
+                      <div className="rounded-md bg-secondary/60 border border-border p-2.5">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">Customer Since</div>
+                        <div className="text-xs text-foreground">{formatDate(c.created)}</div>
+                      </div>
+                      <div className="rounded-md bg-secondary/60 border border-border p-2.5">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">Dealership</div>
+                        <div className="text-xs text-foreground">{c.dealership?.name || "Not linked"}</div>
+                      </div>
+                      <div className="rounded-md bg-secondary/60 border border-border p-2.5">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">Platform Tier</div>
+                        <div className="text-xs text-foreground capitalize">{c.dealership?.subscription_tier || "N/A"}</div>
+                      </div>
+                    </div>
+
+                    {/* Subscriptions */}
+                    {c.subscriptions.length === 0 ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                        <Ban className="h-3.5 w-3.5" /> No subscriptions found
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Subscriptions</div>
+                        {c.subscriptions.map(sub => (
+                          <div key={sub.id} className="rounded-lg bg-background/50 border border-border p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusBadge(sub.status)}`}>
+                                  {sub.status.charAt(0).toUpperCase() + sub.status.slice(1)}
+                                </span>
+                                {sub.cancel_at_period_end && (
+                                  <span className="text-[10px] text-warning flex items-center gap-1">
+                                    <AlertTriangle className="h-3 w-3" /> Cancels at period end
+                                  </span>
+                                )}
+                              </div>
+                              <a
+                                href={`https://dashboard.stripe.com/subscriptions/${sub.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                              >
+                                View in Stripe <ArrowUpRight className="h-3 w-3" />
+                              </a>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {sub.items.map((item, idx) => (
+                                <div key={idx} className="text-xs">
+                                  <div className="font-medium text-foreground">{item.product_name}</div>
+                                  <div className="text-muted-foreground">
+                                    {formatCents(item.unit_amount)}/{item.interval || "one-time"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-2 text-[10px] text-muted-foreground">
+                              Period: {formatDate(sub.current_period_start)} — {formatDate(sub.current_period_end)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Quick actions */}
+                    <div className="flex gap-2 pt-1">
+                      <a
+                        href={`https://dashboard.stripe.com/customers/${c.customer_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> View in Stripe
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Refresh */}
+      <div className="text-center">
+        <button
+          onClick={loadBilling}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <RefreshCw className="h-3.5 w-3.5" /> Refresh Billing Data
+        </button>
+      </div>
     </div>
   );
 }
