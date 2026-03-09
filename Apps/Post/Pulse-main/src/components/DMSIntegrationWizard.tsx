@@ -115,65 +115,57 @@ export function DMSIntegrationWizard() {
   };
 
   const deleteAllInventory = async () => {
-    if (!activeDealerId) return;
+    if (!activeDealerId) {
+      toast.error("No dealership selected", { description: "Please log in again." });
+      return;
+    }
     setDeletingAll(true);
     try {
-      // Use edge function with service role to bypass RLS
-      const { data, error } = await supabase.functions.invoke("admin-actions", {
+      const res = await supabase.functions.invoke("admin-actions", {
         body: { action: "delete_all_vehicles", dealership_id: activeDealerId },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      // supabase.functions.invoke returns { data, error }
+      // data may be parsed JSON or raw text depending on response content-type
+      const payload = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+      if (res.error) throw new Error(res.error.message || "Edge function error");
+      if (payload?.error) throw new Error(payload.error);
       toast.success("All inventory deleted", {
-        description: `${data?.deleted_count || 0} vehicle records removed from your inventory.`,
+        description: `${payload?.deleted_count || 0} vehicle records removed.`,
       });
       setConfirmDeleteAll(false);
     } catch (e: any) {
-      // Fallback: try direct delete (works if RLS allows)
-      try {
-        const { error: fallbackErr } = await supabase
-          .from("vehicles")
-          .delete()
-          .eq("dealership_id", activeDealerId);
-        if (fallbackErr) throw fallbackErr;
-        toast.success("All inventory deleted");
-        setConfirmDeleteAll(false);
-      } catch (fb: any) {
-        toast.error("Delete failed", { description: fb.message || e.message });
-      }
+      console.error("deleteAllInventory error:", e);
+      toast.error("Delete failed", { description: e.message || "Unknown error" });
     } finally {
       setDeletingAll(false);
     }
   };
 
   const systemCleanse = async () => {
-    if (!activeDealerId) return;
+    if (!activeDealerId) {
+      toast.error("No dealership selected", { description: "Please log in again." });
+      return;
+    }
     setCleansing(true);
     try {
-      // Use edge function with service role to bypass RLS
-      const { data, error } = await supabase.functions.invoke("admin-actions", {
+      const res = await supabase.functions.invoke("admin-actions", {
         body: { action: "system_cleanse", dealership_id: activeDealerId },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const payload = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+      if (res.error) throw new Error(res.error.message || "Edge function error");
+      if (payload?.error) throw new Error(payload.error);
+
+      const total = payload?.results
+        ? Object.values(payload.results as Record<string, { deleted: number }>).reduce((sum, t) => sum + (t.deleted || 0), 0)
+        : 0;
       toast.success("System cleansed", {
-        description: "All vehicles, leads, alerts, and import logs have been wiped.",
+        description: `${total} records wiped across all tables.`,
       });
       setConfirmCleanse(false);
       loadLogs();
     } catch (e: any) {
-      // Fallback: try direct delete table by table
-      try {
-        const tables = ["sold_alerts", "price_history", "vehicle_performance", "leads", "vehicles", "ingestion_logs"] as const;
-        for (const table of tables) {
-          await supabase.from(table).delete().eq("dealership_id", activeDealerId);
-        }
-        toast.success("System cleansed");
-        setConfirmCleanse(false);
-        loadLogs();
-      } catch (fb: any) {
-        toast.error("Cleanse failed", { description: fb.message || e.message });
-      }
+      console.error("systemCleanse error:", e);
+      toast.error("Cleanse failed", { description: e.message || "Unknown error" });
     } finally {
       setCleansing(false);
     }
