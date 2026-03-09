@@ -6,6 +6,7 @@ import {
   Shield, Building2, Plus, CheckCircle2, XCircle, Clock, Eye,
   Activity, Zap, Car, Sparkles, TrendingUp, Copy, Search,
   ChevronDown, ChevronUp, AlertTriangle, CreditCard, ArrowLeft,
+  Server, Key, RefreshCw, Loader2, ExternalLink,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────
@@ -382,17 +383,24 @@ function DealerManagement({ onImpersonate }: { onImpersonate: (d: Dealership) =>
 function ActivationQueue() {
   const [entries, setEntries] = useState<ActivationEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  const [generatingCreds, setGeneratingCreds] = useState<string | null>(null);
+  const [generatedCreds, setGeneratedCreds] = useState<Record<string, { host: string; port: number; username: string; password: string }>>({});
 
   useEffect(() => { loadQueue(); }, []);
 
   const loadQueue = async () => {
     const { data: queue } = await supabase.from("activation_queue").select("*").order("created_at", { ascending: false });
-    const { data: dealers } = await supabase.from("dealerships").select("id, name");
-    const dealerMap = new Map((dealers || []).map((d: any) => [d.id, d.name]));
-    setEntries(((queue as unknown as ActivationEntry[]) || []).map(e => ({
-      ...e,
-      dealership_name: dealerMap.get(e.dealership_id) || "Unknown",
-    })));
+    const { data: dealers } = await supabase.from("dealerships").select("id, name, sftp_username");
+    const dealerMap = new Map((dealers || []).map((d: any) => [d.id, { name: d.name, sftp_username: d.sftp_username }]));
+    setEntries(((queue as unknown as ActivationEntry[]) || []).map(e => {
+      const dealer = dealerMap.get(e.dealership_id);
+      return {
+        ...e,
+        dealership_name: dealer?.name || "Unknown",
+        sftp_username: dealer?.sftp_username || null,
+      };
+    }));
     setLoading(false);
   };
 
@@ -413,46 +421,209 @@ function ActivationQueue() {
     loadQueue();
   };
 
+  const generateSFTPCreds = async (entry: ActivationEntry) => {
+    setGeneratingCreds(entry.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-sftp-creds", {
+        body: { dealer_id: entry.dealership_id, action: "generate" },
+      });
+      if (error) throw error;
+      if (data?.credentials) {
+        setGeneratedCreds(prev => ({ ...prev, [entry.id]: data.credentials }));
+        toast.success("SFTP credentials generated!", {
+          description: `Username: ${data.credentials.username} — Save the password now, it won't be shown again.`,
+        });
+      } else {
+        throw new Error(data?.error || "Unknown error");
+      }
+    } catch (e: any) {
+      toast.error("Failed to generate credentials", { description: e.message });
+    } finally {
+      setGeneratingCreds(null);
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard`);
+  };
+
+  const pendingCount = entries.filter(e => e.status === "pending").length;
+
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-        <Clock className="h-5 w-5 text-warning" /> Activation & Verification Queue
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+          <Clock className="h-5 w-5 text-warning" /> Activation & DMS Requests
+        </h2>
+        {pendingCount > 0 && (
+          <span className="flex items-center gap-1.5 rounded-full bg-warning/15 border border-warning/30 px-3 py-1 text-xs font-bold text-warning">
+            <AlertTriangle className="h-3.5 w-3.5" /> {pendingCount} pending
+          </span>
+        )}
+      </div>
 
       {loading ? (
         <div className="text-center py-8 text-muted-foreground text-sm">Loading queue...</div>
       ) : entries.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">No pending activations</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">No requests yet</div>
       ) : (
         <div className="space-y-3">
-          {entries.map(e => (
-            <div key={e.id} className={`glass-card rounded-lg p-4 flex items-center gap-4 ${e.status !== "pending" ? "opacity-50" : ""}`}>
-              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-                e.status === "pending" ? "bg-warning/15 border border-warning/30" :
-                e.status === "approved" ? "bg-success/15 border border-success/30" :
-                "bg-destructive/15 border border-destructive/30"
-              }`}>
-                {e.status === "pending" ? <Clock className="h-5 w-5 text-warning" /> :
-                 e.status === "approved" ? <CheckCircle2 className="h-5 w-5 text-success" /> :
-                 <XCircle className="h-5 w-5 text-destructive" />}
-              </div>
-              <div className="flex-1">
-                <div className="font-medium text-foreground text-sm">{e.dealership_name}</div>
-                <div className="text-xs text-muted-foreground">{e.request_type} · {new Date(e.created_at).toLocaleDateString()}</div>
-              </div>
-              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
-                e.status === "pending" ? "bg-warning/20 text-warning" :
-                e.status === "approved" ? "bg-success/20 text-success" :
-                "bg-destructive/20 text-destructive"
-              }`}>{e.status.toUpperCase()}</span>
-              {e.status === "pending" && (
-                <div className="flex gap-1.5">
-                  <button onClick={() => handleAction(e, "approved")} className="rounded-md bg-success/10 border border-success/20 px-3 py-1.5 text-xs text-success hover:bg-success/20 transition-colors">Approve</button>
-                  <button onClick={() => handleAction(e, "denied")} className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/20 transition-colors">Deny</button>
+          {entries.map(e => {
+            const isDMSPull = e.request_type === "dms_pull";
+            const isExpanded = expandedEntry === e.id;
+            const creds = generatedCreds[e.id];
+
+            return (
+              <div key={e.id} className={`glass-card rounded-lg overflow-hidden ${e.status !== "pending" && !isExpanded ? "opacity-60" : ""}`}>
+                {/* Main row */}
+                <div
+                  className="p-4 flex items-center gap-4 cursor-pointer"
+                  onClick={() => setExpandedEntry(isExpanded ? null : e.id)}
+                >
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${
+                    e.status === "pending" ? "bg-warning/15 border border-warning/30" :
+                    e.status === "approved" ? "bg-success/15 border border-success/30" :
+                    "bg-destructive/15 border border-destructive/30"
+                  }`}>
+                    {isDMSPull ? <Server className="h-5 w-5 text-primary" /> :
+                     e.status === "pending" ? <Clock className="h-5 w-5 text-warning" /> :
+                     e.status === "approved" ? <CheckCircle2 className="h-5 w-5 text-success" /> :
+                     <XCircle className="h-5 w-5 text-destructive" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">{e.dealership_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {isDMSPull ? "DMS Inventory Pull Request" : e.request_type} · {new Date(e.created_at).toLocaleDateString()}
+                    </div>
+                    {e.notes && <div className="text-xs text-muted-foreground/70 mt-0.5 truncate">{e.notes}</div>}
+                  </div>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium shrink-0 ${
+                    e.status === "pending" ? "bg-warning/20 text-warning" :
+                    e.status === "approved" ? "bg-success/20 text-success" :
+                    "bg-destructive/20 text-destructive"
+                  }`}>{e.status.toUpperCase()}</span>
+                  {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Expanded DMS Pull details */}
+                {isExpanded && (
+                  <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
+                    {/* Actions for pending */}
+                    {e.status === "pending" && (
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleAction(e, "approved")} className="rounded-md bg-success/10 border border-success/20 px-4 py-2 text-xs font-medium text-success hover:bg-success/20 transition-colors flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                        </button>
+                        <button onClick={() => handleAction(e, "denied")} className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors flex items-center gap-1.5">
+                          <XCircle className="h-3.5 w-3.5" /> Deny
+                        </button>
+                      </div>
+                    )}
+
+                    {/* SFTP Setup Section (for DMS pulls) */}
+                    {isDMSPull && e.status === "approved" && (
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <Key className="h-3.5 w-3.5 text-primary" /> SFTP Credentials
+                        </h4>
+
+                        {creds ? (
+                          /* Show generated credentials */
+                          <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 space-y-3">
+                            <div className="flex items-center gap-2 text-xs text-primary font-semibold">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Credentials Generated — Save these now!
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              {[
+                                { label: "Host", value: creds.host },
+                                { label: "Port", value: String(creds.port) },
+                                { label: "Username", value: creds.username },
+                                { label: "Password", value: creds.password },
+                              ].map(f => (
+                                <div key={f.label} className="space-y-1">
+                                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{f.label}</label>
+                                  <div className="flex items-center gap-1.5">
+                                    <code className="flex-1 rounded-md bg-secondary border border-border px-2 py-1.5 text-xs font-mono text-foreground truncate">
+                                      {f.label === "Password" ? f.value : f.value}
+                                    </code>
+                                    <button
+                                      onClick={() => copyToClipboard(f.value, f.label)}
+                                      className="rounded-md bg-secondary border border-border p-1.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="rounded-md bg-warning/10 border border-warning/20 p-2.5 text-[10px] text-warning">
+                              <strong>Important:</strong> The password is shown only once. Copy it now and enter it into your SFTP Cloud account. Once the DMS file is uploaded to SFTP Cloud, inventory will sync automatically.
+                            </div>
+
+                            {/* Setup Steps */}
+                            <div className="space-y-2 pt-1">
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Setup Steps</p>
+                              {[
+                                "Copy the credentials above",
+                                "Log into SFTP Cloud and create a new user with these credentials",
+                                "Configure the dealer's DMS to export inventory to this SFTP path",
+                                "Once the file lands on SFTP, Pulse will auto-ingest into this dealer's inventory",
+                              ].map((step, i) => (
+                                <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary shrink-0">{i + 1}</span>
+                                  {step}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (e as any).sftp_username ? (
+                          /* Credentials already exist */
+                          <div className="rounded-lg bg-success/5 border border-success/20 p-4 space-y-3">
+                            <div className="flex items-center gap-2 text-xs text-success font-semibold">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> SFTP credentials already configured
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <code className="rounded-md bg-secondary border border-border px-2 py-1.5 text-xs font-mono text-foreground">
+                                {(e as any).sftp_username}@us-east-1.sftpcloud.io
+                              </code>
+                              <button
+                                onClick={() => generateSFTPCreds({ ...e, request_type: e.request_type } as any)}
+                                disabled={generatingCreds === e.id}
+                                className="rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+                              >
+                                <RefreshCw className="h-3 w-3" /> Regenerate
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* No credentials yet — generate */
+                          <button
+                            onClick={() => generateSFTPCreds(e)}
+                            disabled={generatingCreds === e.id}
+                            className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                          >
+                            {generatingCreds === e.id ? (
+                              <><Loader2 className="h-4 w-4 animate-spin" /> Generating...</>
+                            ) : (
+                              <><Key className="h-4 w-4" /> Generate SFTP Credentials</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Non-DMS entries just show approve/deny */}
+                    {!isDMSPull && e.status !== "pending" && (
+                      <div className="text-xs text-muted-foreground">
+                        {e.status === "approved" ? "This request was approved." : "This request was denied."}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
