@@ -86,6 +86,41 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (action === "bulk_insert_vehicles") {
+    const dealership_id = body.dealership_id;
+    const vehicles = body.vehicles;
+    if (!dealership_id || !vehicles || !Array.isArray(vehicles)) {
+      return new Response(JSON.stringify({ error: "dealership_id and vehicles array required" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
+    // Insert in batches of 50
+    let totalInserted = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < vehicles.length; i += 50) {
+      const batch = vehicles.slice(i, i + 50);
+      const { data, error } = await supabaseAdmin
+        .from("vehicles")
+        .insert(batch)
+        .select("id");
+      if (error) {
+        errors.push(`Batch ${Math.floor(i / 50) + 1}: ${error.message}`);
+      } else {
+        totalInserted += data?.length || 0;
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: errors.length === 0,
+      inserted_count: totalInserted,
+      errors: errors.length > 0 ? errors : undefined,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   if (action === "add_body_style_column") {
     // Use service role to add the column
     const { data, error } = await supabaseAdmin.rpc("exec_sql", {
