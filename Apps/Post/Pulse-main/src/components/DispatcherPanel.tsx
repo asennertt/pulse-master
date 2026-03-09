@@ -77,8 +77,10 @@ export function DispatcherPanel({ vehicle, onClose, onSynced }: DispatcherPanelP
       const make = vehicle.make || "";
       const model = vehicle.model || "";
       const year = vehicle.year || "";
+      const color = encodeURIComponent(vehicle.exterior_color || "");
+      const trim = encodeURIComponent(vehicle.trim || "");
 
-      const fbUrl = `https://www.facebook.com/marketplace/create/vehicle/?price=${price}&desc=${desc}&mileage=${mileage}&vin=${vin}&make=${make}&model=${model}&year=${year}`;
+      const fbUrl = `https://www.facebook.com/marketplace/create/vehicle/?price=${price}&desc=${desc}&mileage=${mileage}&vin=${vin}&make=${make}&model=${model}&year=${year}&color=${color}&trim=${trim}`;
 
       console.log("SENDING TO FB:", fbUrl);
       setFbUrl(fbUrl);
