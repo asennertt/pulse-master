@@ -12,6 +12,10 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import NotFound from "./pages/NotFound";
 
+// Platform (Super Admin)
+import PlatformLogin from "./pages/PlatformLogin";
+import PlatformDashboard from "./pages/PlatformDashboard";
+
 /**
  * Redirects / → /auth while preserving all query-string parameters.
  * This is critical for the cross-domain auth flow: the Landing page
@@ -68,6 +72,17 @@ function App() {
             element={
               <ProtectedRoute requireSuperAdmin>
                 <SuperAdmin />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* PLATFORM (Super Admin Portal) */}
+          <Route path="/platform" element={<PlatformLogin />} />
+          <Route
+            path="/platform/dashboard"
+            element={
+              <ProtectedRoute requireSuperAdmin>
+                <PlatformDashboard />
               </ProtectedRoute>
             }
           />

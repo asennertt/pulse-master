@@ -1,6 +1,6 @@
 import { ReactNode, useEffect } from "react";
 import { useAuth } from "./AuthContext"; // Ensure this path points to your AuthContext file
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react"; // Common in many setups, or replace with your spinner
 
 interface ProtectedRouteProps {
@@ -18,16 +18,21 @@ export const ProtectedRoute = ({
 }: ProtectedRouteProps) => {
   const { user, loading, isSuperAdmin, isDealerAdmin, subscribed } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine login redirect based on current path
+  const isPlatformRoute = location.pathname.startsWith("/platform");
+  const loginPath = isPlatformRoute ? "/platform" : "/auth";
 
   useEffect(() => {
     // Wait until the AuthProvider has finished checking the session and roles
     if (!loading) {
       if (!user) {
-        // 1. Not logged in? Go to login
-        navigate("/auth"); 
+        // 1. Not logged in? Go to appropriate login
+        navigate(loginPath); 
       } else if (requireSuperAdmin && !isSuperAdmin) {
         // 2. Needs Super Admin but doesn't have it
-        navigate("/"); 
+        navigate(isPlatformRoute ? "/platform" : "/"); 
       } else if (requireDealerAdmin && !isDealerAdmin && !isSuperAdmin) {
         // 3. Needs Dealer Admin (Super Admins bypass this)
         navigate("/");
@@ -36,7 +41,7 @@ export const ProtectedRoute = ({
         navigate("/billing");
       }
     }
-  }, [user, loading, isSuperAdmin, isDealerAdmin, subscribed, navigate, requireSuperAdmin, requireDealerAdmin, requireSubscription]);
+  }, [user, loading, isSuperAdmin, isDealerAdmin, subscribed, navigate, requireSuperAdmin, requireDealerAdmin, requireSubscription, loginPath, isPlatformRoute]);
 
   // While checking the database, show a full-screen loader
   if (loading) {

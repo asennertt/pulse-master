@@ -313,6 +313,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const signOut = async () => {
+    // Determine where to redirect based on current path
+    const isPlatform = location.pathname.startsWith("/platform");
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -320,7 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     clearAuth();
     setLoading(false);
-    navigate("/auth", { replace: true });
+    navigate(isPlatform ? "/platform" : "/auth", { replace: true });
   };
 
   const value: AuthContextType = {
