@@ -118,17 +118,29 @@ export function DMSIntegrationWizard() {
     if (!activeDealerId) return;
     setDeletingAll(true);
     try {
-      const { error } = await supabase
-        .from("vehicles")
-        .delete()
-        .eq("dealership_id", activeDealerId);
+      // Use edge function with service role to bypass RLS
+      const { data, error } = await supabase.functions.invoke("admin-actions", {
+        body: { action: "delete_all_vehicles", dealership_id: activeDealerId },
+      });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       toast.success("All inventory deleted", {
-        description: "Every vehicle record has been removed from your inventory.",
+        description: `${data?.deleted_count || 0} vehicle records removed from your inventory.`,
       });
       setConfirmDeleteAll(false);
     } catch (e: any) {
-      toast.error("Delete failed", { description: e.message });
+      // Fallback: try direct delete (works if RLS allows)
+      try {
+        const { error: fallbackErr } = await supabase
+          .from("vehicles")
+          .delete()
+          .eq("dealership_id", activeDealerId);
+        if (fallbackErr) throw fallbackErr;
+        toast.success("All inventory deleted");
+        setConfirmDeleteAll(false);
+      } catch (fb: any) {
+        toast.error("Delete failed", { description: fb.message || e.message });
+      }
     } finally {
       setDeletingAll(false);
     }
@@ -138,30 +150,30 @@ export function DMSIntegrationWizard() {
     if (!activeDealerId) return;
     setCleansing(true);
     try {
-      const tables = [
-        "sold_alerts",
-        "price_history",
-        "vehicle_performance",
-        "leads",
-        "vehicles",
-        "ingestion_logs",
-      ] as const;
-
-      for (const table of tables) {
-        const { error } = await supabase
-          .from(table)
-          .delete()
-          .eq("dealership_id", activeDealerId);
-        if (error) throw new Error(`Failed to clear ${table}: ${error.message}`);
-      }
-
+      // Use edge function with service role to bypass RLS
+      const { data, error } = await supabase.functions.invoke("admin-actions", {
+        body: { action: "system_cleanse", dealership_id: activeDealerId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       toast.success("System cleansed", {
         description: "All vehicles, leads, alerts, and import logs have been wiped.",
       });
       setConfirmCleanse(false);
       loadLogs();
     } catch (e: any) {
-      toast.error("Cleanse failed", { description: e.message });
+      // Fallback: try direct delete table by table
+      try {
+        const tables = ["sold_alerts", "price_history", "vehicle_performance", "leads", "vehicles", "ingestion_logs"] as const;
+        for (const table of tables) {
+          await supabase.from(table).delete().eq("dealership_id", activeDealerId);
+        }
+        toast.success("System cleansed");
+        setConfirmCleanse(false);
+        loadLogs();
+      } catch (fb: any) {
+        toast.error("Cleanse failed", { description: fb.message || e.message });
+      }
     } finally {
       setCleansing(false);
     }

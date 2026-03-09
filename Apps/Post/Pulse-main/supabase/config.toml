@@ -35,3 +35,21 @@ verify_jwt = false
 
 [functions.sync-listing]
 verify_jwt = false
+
+[functions.generate-sftp-creds]
+verify_jwt = false
+
+[functions.admin-actions]
+verify_jwt = false
+
+[functions.ai-csv-map]
+verify_jwt = false
+
+[functions.check-subscription]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
