@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
 
     const { data: vehicle, error } = await supabase
       .from("vehicles")
-      .select("price, mileage, make, model, year, images, vin, ai_description")
+      .select("price, mileage, make, model, year, trim, exterior_color, images, vin, ai_description")
       .eq("vin", vin)
       .maybeSingle();
 
@@ -63,6 +63,8 @@ Deno.serve(async (req) => {
       make: vehicle.make,
       model: vehicle.model,
       year: vehicle.year,
+      trim: vehicle.trim || "",
+      exterior_color: vehicle.exterior_color || "",
       vin: vehicle.vin,
       images: imageUrls,
     });
