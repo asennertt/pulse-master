@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Car, Wifi, Clock, Gauge, Sparkles, Camera, Store, TrendingDown, DollarSign } from "lucide-react";
+import { Car, Wifi, Clock, Gauge, Sparkles, Camera, Store, TrendingDown, DollarSign, Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StaffAssignSelect } from "@/components/StaffAssignSelect";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
@@ -133,10 +133,16 @@ export function VehicleCard({ vehicle, userPostedAt, onMarkSold, onGeneratePost,
             </button>
           </div>
         ) : (
-          <div className="pt-1">
-            <div className="rounded-md bg-muted border border-border px-3 py-2 text-xs text-muted-foreground text-center">
-              Listing Removed
+          <div className="pt-1 space-y-1.5">
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive text-center font-medium">
+              Vehicle Sold
             </div>
+            <button
+              onClick={() => window.open("https://www.facebook.com/marketplace/you/selling", "_blank")}
+              className="w-full rounded-md bg-[#1877F2]/10 border border-[#1877F2]/20 px-3 py-1.5 text-xs font-medium text-[#1877F2] hover:bg-[#1877F2]/20 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Trash2 className="h-3 w-3" /> Delete from Facebook
+            </button>
           </div>
         )}
       </div>

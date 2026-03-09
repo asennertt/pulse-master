@@ -3,15 +3,15 @@ import { DMSIntegrationWizard } from "@/components/DMSIntegrationWizard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  Settings, Building2, Zap, Sparkles, Users, Save, Upload,
-  Phone, Globe, MapPin, Palette, Clock, DollarSign, Trash2,
+  Settings, Building2, Sparkles, Users, Save, Upload,
+  Phone, Globe, MapPin, Palette, Trash2,
   Brain, Eye, Shield, Mail, Facebook, CheckCircle2, XCircle,
   Plus, Loader2, Database, Link2, Copy, BarChart3,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 // ── Types ──────────────────────────────────────────────
-type SettingsTab = "profile" | "dms" | "automation" | "ai" | "users";
+type SettingsTab = "profile" | "dms" | "ai" | "users";
 
 interface DealerSettings {
   id: string;
@@ -22,11 +22,6 @@ interface DealerSettings {
   website_url: string;
   logo_url: string;
   brand_color: string;
-  auto_post_new_inventory: boolean;
-  auto_renew_listings: boolean;
-  auto_renew_days: number;
-  price_markup: number;
-  delete_on_sold: boolean;
   global_system_prompt: string;
   auto_blur_plates: boolean;
 }
@@ -51,11 +46,6 @@ const defaultSettings: DealerSettings = {
   website_url: "",
   logo_url: "",
   brand_color: "#1e90ff",
-  auto_post_new_inventory: false,
-  auto_renew_listings: false,
-  auto_renew_days: 7,
-  price_markup: 0,
-  delete_on_sold: true,
   global_system_prompt: "",
   auto_blur_plates: false,
 };
@@ -93,11 +83,6 @@ export function SettingsHub() {
         website_url: toSave.website_url,
         logo_url: toSave.logo_url,
         brand_color: toSave.brand_color,
-        auto_post_new_inventory: toSave.auto_post_new_inventory,
-        auto_renew_listings: toSave.auto_renew_listings,
-        auto_renew_days: toSave.auto_renew_days,
-        price_markup: toSave.price_markup,
-        delete_on_sold: toSave.delete_on_sold,
         global_system_prompt: toSave.global_system_prompt,
         auto_blur_plates: toSave.auto_blur_plates,
       })
@@ -118,7 +103,6 @@ export function SettingsHub() {
   const tabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
     { key: "profile", label: "Dealership Profile", icon: Building2 },
     { key: "dms", label: "DMS Integration", icon: Database },
-    { key: "automation", label: "Automation Rules", icon: Zap },
     { key: "ai", label: "AI Customization", icon: Sparkles },
     { key: "users", label: "User Management", icon: Users },
   ];
@@ -166,7 +150,6 @@ export function SettingsHub() {
 
       {tab === "profile" && <DealershipProfile settings={settings} updateField={updateField} />}
       {tab === "dms" && <DMSIntegrationWizard />}
-      {tab === "automation" && <AutomationRules settings={settings} updateField={updateField} />}
       {tab === "ai" && <AICustomization settings={settings} updateField={updateField} />}
       {tab === "users" && <UserManagement />}
     </div>
@@ -293,103 +276,7 @@ function DealershipProfile({
   );
 }
 
-// ── 2. Automation Rules ────────────────────────────────
-function AutomationRules({
-  settings,
-  updateField,
-}: {
-  settings: DealerSettings;
-  updateField: <K extends keyof DealerSettings>(k: K, v: DealerSettings[K]) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      {/* Posting Schedule */}
-      <div className="glass-card rounded-lg p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" /> Posting Schedule
-        </h3>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-md bg-secondary/60 border border-border p-4">
-            <div>
-              <div className="text-sm font-medium text-foreground">Auto-Post New Inventory</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Automatically create a Marketplace listing when new vehicles arrive from the DMS feed.</div>
-            </div>
-            <Switch
-              checked={settings.auto_post_new_inventory}
-              onCheckedChange={v => updateField("auto_post_new_inventory", v)}
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-md bg-secondary/60 border border-border p-4">
-            <div>
-              <div className="text-sm font-medium text-foreground">Auto-Renew Listings</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                Automatically renew active listings every <strong>{settings.auto_renew_days}</strong> days to keep them fresh.
-              </div>
-              {settings.auto_renew_listings && (
-                <div className="mt-2 flex items-center gap-2">
-                  <label className="text-[10px] text-muted-foreground uppercase">Renewal interval (days):</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={settings.auto_renew_days}
-                    onChange={e => updateField("auto_renew_days", parseInt(e.target.value) || 7)}
-                    className="w-16 rounded-md bg-background border border-border px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-              )}
-            </div>
-            <Switch
-              checked={settings.auto_renew_listings}
-              onCheckedChange={v => updateField("auto_renew_listings", v)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Pricing Rules */}
-      <div className="glass-card rounded-lg p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <DollarSign className="h-4 w-4 text-success" /> Pricing Rules
-        </h3>
-        <div className="rounded-md bg-secondary/60 border border-border p-4 space-y-2">
-          <div className="text-sm font-medium text-foreground">Add Markup / Pack to DMS Price</div>
-          <div className="text-xs text-muted-foreground">This amount is automatically added to the DMS feed price before listing. Set to 0 for no markup.</div>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-lg font-bold text-success">$</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.price_markup}
-              onChange={e => updateField("price_markup", parseFloat(e.target.value) || 0)}
-              className="w-32 rounded-md bg-background border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Smart Delete */}
-      <div className="glass-card rounded-lg p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Trash2 className="h-4 w-4 text-destructive" /> Smart Delete
-        </h3>
-        <div className="flex items-center justify-between rounded-md bg-secondary/60 border border-border p-4">
-          <div>
-            <div className="text-sm font-medium text-foreground">Delete on Sold</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Instantly remove a Marketplace listing once the vehicle disappears from the DMS feed (marked as sold).</div>
-          </div>
-          <Switch
-            checked={settings.delete_on_sold}
-            onCheckedChange={v => updateField("delete_on_sold", v)}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 3. AI Customization ────────────────────────────────
+// ── 2. AI Customization ────────────────────────────────
 function AICustomization({
   settings,
   updateField,

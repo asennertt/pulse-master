@@ -146,8 +146,23 @@ export function DMSIntegrationWizard() {
       setAiResult(data);
       setConnected(true);
       toast.success("Import Complete!", {
-        description: `${data.mapped_columns} columns mapped · ${data.new_vehicles} new vehicles · ${data.updated_vehicles} updated`,
+        description: `${data.mapped_columns} columns mapped · ${data.new_vehicles} new · ${data.updated_vehicles} updated${data.marked_sold ? ` · ${data.marked_sold} sold` : ""}`,
       });
+
+      // Notify about sold vehicles — remind user to delete from Facebook
+      if (data.sold_vehicles && data.sold_vehicles.length > 0) {
+        for (const sv of data.sold_vehicles) {
+          toast.warning(`${sv.year} ${sv.make} ${sv.model} — Sold`, {
+            description: "This vehicle is no longer in your inventory. Remember to delete the listing on Facebook Marketplace.",
+            duration: 15000,
+            action: {
+              label: "Open Facebook",
+              onClick: () => window.open("https://www.facebook.com/marketplace/you/selling", "_blank"),
+            },
+          });
+        }
+      }
+
       loadLogs();
       setStep("controls");
     } catch (e: any) {

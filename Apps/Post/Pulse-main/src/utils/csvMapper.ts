@@ -154,6 +154,13 @@ function applyMapping(
 }
 
 // ── Main import function ──
+export interface SoldVehicle {
+  vin: string;
+  year: number;
+  make: string;
+  model: string;
+}
+
 export async function importCSVWithMapping(
   file: File,
   dealerId: string,
@@ -164,6 +171,8 @@ export async function importCSVWithMapping(
   new_vehicles: number;
   updated_vehicles: number;
   skipped: number;
+  marked_sold: number;
+  sold_vehicles: SoldVehicle[];
   mapped_columns: number;
 }> {
   const csvText = await file.text();
@@ -184,12 +193,20 @@ export async function importCSVWithMapping(
     throw new Error("No VIN column detected. A VIN column is required for import.");
   }
 
-  // Fetch existing VINs for this dealer to determine insert vs update
+  // Fetch existing vehicles for this dealer to determine insert vs update vs sold
   const { data: dbVehicles } = await supabase
     .from("vehicles")
-    .select("vin")
+    .select("vin, year, make, model, status")
     .eq("dealership_id", dealerId);
-  const existingVins = new Set((dbVehicles || []).map((v: any) => v.vin));
+  const existingVehicles = (dbVehicles || []) as { vin: string; year: number; make: string; model: string; status: string }[];
+  const existingVins = new Set(existingVehicles.map(v => v.vin));
+
+  // Collect all VINs from the new CSV
+  const csvVins = new Set<string>();
+  for (const row of rows) {
+    const mapped = applyMapping(row, mapping);
+    if (mapped.vin) csvVins.add(mapped.vin);
+  }
 
   let newVehicles = 0;
   let updatedVehicles = 0;
@@ -241,16 +258,35 @@ export async function importCSVWithMapping(
     }
   }
 
+  // Detect vehicles no longer in the CSV → mark as sold
+  let markedSold = 0;
+  const soldVehicles: SoldVehicle[] = [];
+  const missingFromCsv = existingVehicles.filter(
+    v => v.status === "available" && !csvVins.has(v.vin)
+  );
+
+  for (const v of missingFromCsv) {
+    const { error } = await supabase
+      .from("vehicles")
+      .update({ status: "sold" })
+      .eq("vin", v.vin)
+      .eq("dealership_id", dealerId);
+    if (!error) {
+      markedSold++;
+      soldVehicles.push({ vin: v.vin, year: v.year, make: v.make, model: v.model });
+    }
+  }
+
   // Log the run
   await supabase.from("ingestion_logs").insert({
     source: file.name,
     feed_type: "CSV (Auto-Mapped)",
     vehicles_scanned: rows.length,
     new_vehicles: newVehicles,
-    marked_sold: 0,
+    marked_sold: markedSold,
     images_fetched: 0,
     status: "success",
-    message: `Auto-mapped ${Object.keys(mapping).length} columns · ${newVehicles} new · ${updatedVehicles} updated · ${skipped} skipped (no VIN)`,
+    message: `Auto-mapped ${Object.keys(mapping).length} columns · ${newVehicles} new · ${updatedVehicles} updated · ${markedSold} sold · ${skipped} skipped (no VIN)`,
     dealership_id: dealerId,
   });
 
@@ -261,6 +297,8 @@ export async function importCSVWithMapping(
     new_vehicles: newVehicles,
     updated_vehicles: updatedVehicles,
     skipped,
+    marked_sold: markedSold,
+    sold_vehicles: soldVehicles,
     mapped_columns: Object.keys(mapping).length,
   };
 }
