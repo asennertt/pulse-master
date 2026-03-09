@@ -214,7 +214,7 @@ const Index = () => {
             <span className="text-xs text-muted-foreground">Viewing as dealer — data is filtered to their account</span>
           </div>
           <button
-            onClick={() => { setImpersonatingDealerId(null); navigate("/super-admin"); }}
+            onClick={() => { setImpersonatingDealerId(null); navigate("/platform/dashboard"); }}
             className="flex items-center gap-1.5 rounded-md bg-warning/20 border border-warning/30 px-3 py-1 text-xs text-warning hover:bg-warning/30 transition-colors"
           >
             <X className="h-3 w-3" /> Exit Impersonation
@@ -254,20 +254,12 @@ const Index = () => {
             <button onClick={() => setShowDMSLog(true)} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <Database className="h-3.5 w-3.5" /> Feed Log
             </button>
-            {isSuperAdmin && (
-              <button
-                onClick={() => navigate("/super-admin")}
-                className="flex items-center gap-1.5 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/20 transition-colors"
-              >
-                <Shield className="h-3.5 w-3.5" /> Super Admin
-              </button>
-            )}
-            {isDealerAdmin && !isSuperAdmin && (
+            {isDealerAdmin && (
               <button
                 onClick={() => navigate("/admin")}
                 className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
               >
-                <Shield className="h-3.5 w-3.5" /> Dealer Admin
+                <Shield className="h-3.5 w-3.5" /> Admin
               </button>
             )}
             <button onClick={signOut} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
