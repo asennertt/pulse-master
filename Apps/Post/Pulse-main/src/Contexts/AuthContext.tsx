@@ -87,6 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
+    // If logging in from /platform, redirect to platform dashboard
+    if (location.pathname.startsWith("/platform")) {
+      navigate("/platform/dashboard", { replace: true });
+      return;
+    }
     const dest = profile && !profile.onboarding_complete ? "/onboarding" : "/dashboard";
     if (location.pathname !== dest) {
       navigate(dest, { replace: true });
@@ -246,7 +251,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               return;
             }
 
-            if (capturedEvent === "SIGNED_IN" && !hadSessionOnMountRef.current) {
+            // Skip splash screen for /platform logins — they handle their own redirect
+            const isPlatformLogin = window.location.pathname.startsWith("/platform");
+            if (capturedEvent === "SIGNED_IN" && !hadSessionOnMountRef.current && !isPlatformLogin) {
               const name = capturedUser.user_metadata?.full_name as string | undefined;
               const variant = isNewAccount(capturedUser) ? "signup" : "login";
               setSplashUserName(name);
