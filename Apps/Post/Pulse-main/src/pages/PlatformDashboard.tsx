@@ -780,7 +780,6 @@ interface BillingSummary {
 }
 
 function BillingOverview() {
-  const { session } = useAuth();
   const [customers, setCustomers] = useState<BillingCustomer[]>([]);
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -795,9 +794,7 @@ function BillingOverview() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke("admin-billing", {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
+      const { data, error: fnError } = await supabase.functions.invoke("admin-billing");
       if (fnError) throw new Error(fnError.message);
       if (data?.error) throw new Error(data.error);
       setCustomers(data.customers || []);
