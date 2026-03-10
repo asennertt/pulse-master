@@ -7,11 +7,13 @@ import {
   Phone, Globe, MapPin, Palette, Trash2,
   Brain, Eye, Shield, Mail, Facebook, CheckCircle2, XCircle,
   Plus, Loader2, Database, Link2, Copy, BarChart3,
+  Sun, Moon, Monitor,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { useTheme } from "@/Contexts/ThemeContext";
 
 // ── Types ──────────────────────────────────────────────
-type SettingsTab = "profile" | "dms" | "ai" | "users";
+type SettingsTab = "profile" | "dms" | "ai" | "users" | "appearance";
 
 interface DealerSettings {
   id: string;
@@ -105,6 +107,7 @@ export function SettingsHub() {
     { key: "dms", label: "DMS Integration", icon: Database },
     { key: "ai", label: "AI Customization", icon: Sparkles },
     { key: "users", label: "User Management", icon: Users },
+    { key: "appearance", label: "Appearance", icon: Palette },
   ];
 
   if (loading) {
@@ -121,7 +124,7 @@ export function SettingsHub() {
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
           <Settings className="h-5 w-5 text-primary" /> Settings & Configuration
         </h2>
-        {tab !== "users" && tab !== "dms" && (
+        {tab !== "users" && tab !== "dms" && tab !== "appearance" && (
           <button
             onClick={() => saveSettings()}
             disabled={saving}
@@ -152,6 +155,7 @@ export function SettingsHub() {
       {tab === "dms" && <DMSIntegrationWizard />}
       {tab === "ai" && <AICustomization settings={settings} updateField={updateField} />}
       {tab === "users" && <UserManagement />}
+      {tab === "appearance" && <AppearanceSettings />}
     </div>
   );
 }
@@ -593,6 +597,93 @@ function UserManagement() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── 5. Appearance Settings ─────────────────────────────────
+function AppearanceSettings() {
+  const { theme, setTheme } = useTheme();
+
+  const options: { key: "dark" | "light"; label: string; description: string; icon: React.ElementType; preview: { bg: string; card: string; text: string; accent: string } }[] = [
+    {
+      key: "dark",
+      label: "Dark",
+      description: "Default dark theme. Easy on the eyes, especially at night.",
+      icon: Moon,
+      preview: { bg: "bg-[hsl(220,20%,7%)]", card: "bg-[hsl(220,18%,10%)]", text: "text-[hsl(210,20%,92%)]", accent: "bg-[hsl(205,100%,55%)]" },
+    },
+    {
+      key: "light",
+      label: "Light",
+      description: "Clean light theme. Better visibility in bright environments.",
+      icon: Sun,
+      preview: { bg: "bg-[hsl(220,20%,97%)]", card: "bg-white", text: "text-[hsl(220,20%,12%)]", accent: "bg-[hsl(205,100%,45%)]" },
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="glass-card rounded-lg p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Palette className="h-4 w-4 text-primary" /> Theme
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Choose how Pulse Post looks for you. This is saved to your browser.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {options.map(opt => {
+            const active = theme === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => setTheme(opt.key)}
+                className={`group relative rounded-xl border-2 p-1 transition-all duration-200 ${
+                  active
+                    ? "border-primary ring-2 ring-primary/20"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+              >
+                {/* Mini preview */}
+                <div className={`rounded-lg ${opt.preview.bg} p-3 space-y-2`}>
+                  {/* Fake top bar */}
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2 w-2 rounded-full ${opt.preview.accent}`} />
+                    <div className={`h-1.5 w-12 rounded-full ${opt.preview.card}`} />
+                    <div className="flex-1" />
+                    <div className={`h-1.5 w-6 rounded-full ${opt.preview.card}`} />
+                  </div>
+                  {/* Fake content cards */}
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div className={`${opt.preview.card} rounded h-8 border border-black/5`} />
+                    <div className={`${opt.preview.card} rounded h-8 border border-black/5`} />
+                    <div className={`${opt.preview.card} rounded h-8 border border-black/5`} />
+                  </div>
+                  <div className="flex gap-1.5">
+                    <div className={`${opt.preview.accent} rounded h-5 w-16`} />
+                    <div className={`${opt.preview.card} rounded h-5 flex-1 border border-black/5`} />
+                  </div>
+                </div>
+
+                {/* Label */}
+                <div className="flex items-center gap-2.5 px-3 py-3">
+                  <opt.icon className={`h-4 w-4 ${active ? "text-primary" : "text-muted-foreground"}`} />
+                  <div className="text-left">
+                    <div className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>{opt.label}</div>
+                    <div className="text-[10px] text-muted-foreground leading-tight">{opt.description}</div>
+                  </div>
+                  {active && (
+                    <div className="ml-auto">
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

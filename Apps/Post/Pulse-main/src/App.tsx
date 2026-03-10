@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "./Contexts/AuthContext";
+import { ThemeProvider } from "./Contexts/ThemeContext";
 import { ProtectedRoute } from "./Contexts/ProtectedRoute";
 
 // Pages
@@ -31,6 +32,7 @@ function RedirectToAuth() {
 
 function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <AuthProvider>
         <Routes>
@@ -96,6 +98,7 @@ function App() {
         </Routes>
       </AuthProvider>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

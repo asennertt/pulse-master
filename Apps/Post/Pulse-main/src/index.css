@@ -5,6 +5,7 @@
 @tailwind utilities;
 
 @layer base {
+  /* ─── Dark Mode (default) ─── */
   :root {
     --background: 220 20% 7%;
     --foreground: 210 20% 92%;
@@ -57,6 +58,58 @@
     --electric-glow: 205 100% 55%;
     --electric-glow-dim: 205 80% 35%;
   }
+
+  /* ─── Light Mode ─── */
+  :root.light {
+    --background: 220 20% 97%;
+    --foreground: 220 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 12%;
+
+    --primary: 205 100% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 16% 30%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 215 12% 45%;
+
+    --accent: 205 100% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 220 14% 86%;
+    --input: 220 14% 86%;
+    --ring: 205 100% 45%;
+
+    --sidebar-background: 220 16% 95%;
+    --sidebar-foreground: 220 16% 30%;
+    --sidebar-primary: 205 100% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 90%;
+    --sidebar-accent-foreground: 220 20% 12%;
+    --sidebar-border: 220 14% 88%;
+    --sidebar-ring: 205 100% 45%;
+
+    /* Custom tokens — light */
+    --glass-bg: 0 0% 100% / 0.7;
+    --glass-border: 220 14% 88%;
+    --electric-glow: 205 100% 45%;
+    --electric-glow-dim: 205 60% 55%;
+  }
 }
 
 @layer base {
@@ -97,7 +150,7 @@
   }
 
   .stat-gradient {
-    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(220 18% 13%) 100%);
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--secondary)) 100%);
   }
 }
 
