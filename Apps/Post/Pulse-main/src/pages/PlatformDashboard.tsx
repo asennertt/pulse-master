@@ -324,9 +324,19 @@ function PlatformOverview({ onNavigate }: { onNavigate: (tab: PlatformTab) => vo
 }
 
 // ────────────────── Dealer Overview ──────────────────
+interface FeedHealth {
+  dealer_id: string;
+  last_sync: string;
+  vehicles_scanned: number;
+  new_vehicles: number;
+  status: string;
+  source: string;
+}
+
 function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => void }) {
   const [dealers, setDealers] = useState<Dealership[]>([]);
   const [fbStatusMap, setFbStatusMap] = useState<Record<string, string>>({});
+  const [feedHealthMap, setFeedHealthMap] = useState<Record<string, FeedHealth>>({});
   const [dmsPullRequests, setDmsPullRequests] = useState<ActivationEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -338,10 +348,11 @@ function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => v
   useEffect(() => { loadDealers(); }, []);
 
   const loadDealers = async () => {
-    const [dealerRes, settingsRes, dmsPullRes] = await Promise.all([
+    const [dealerRes, settingsRes, dmsPullRes, feedRes] = await Promise.all([
       supabase.from("dealerships").select("*").order("created_at", { ascending: false }),
       supabase.from("dealer_settings").select("dealership_id, fb_token_status"),
       supabase.from("activation_queue").select("*").eq("request_type", "dms_pull").eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("ingestion_logs").select("dealer_id, created_at, vehicles_scanned, new_vehicles, status, source").order("created_at", { ascending: false }),
     ]);
     const dealerList = (dealerRes.data as unknown as Dealership[]) || [];
     setDealers(dealerList);
@@ -350,6 +361,23 @@ function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => v
       if (s.dealership_id) map[s.dealership_id] = s.fb_token_status || "not_connected";
     }
     setFbStatusMap(map);
+
+    // Build feed health map — latest ingestion per dealer
+    const fhMap: Record<string, FeedHealth> = {};
+    for (const log of (feedRes.data || []) as any[]) {
+      if (log.dealer_id && !fhMap[log.dealer_id]) {
+        fhMap[log.dealer_id] = {
+          dealer_id: log.dealer_id,
+          last_sync: log.created_at,
+          vehicles_scanned: log.vehicles_scanned || 0,
+          new_vehicles: log.new_vehicles || 0,
+          status: log.status || "unknown",
+          source: log.source || "unknown",
+        };
+      }
+    }
+    setFeedHealthMap(fhMap);
+
     const dealerMap = new Map(dealerList.map(d => [d.id, d.name]));
     setDmsPullRequests(((dmsPullRes.data as unknown as ActivationEntry[]) || []).map(e => ({
       ...e, dealership_name: dealerMap.get(e.dealership_id) || "Unknown",
@@ -487,6 +515,7 @@ function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => v
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Verified</th>
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">FB Status</th>
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Credentials</th>
+                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Feed</th>
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Account Active</th>
                   <th className="text-right px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Actions</th>
                 </tr>
@@ -556,6 +585,44 @@ function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => v
                           Generate
                         </button>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const fh = feedHealthMap[d.id];
+                        if (!fh) return (
+                          <span className="text-[10px] text-muted-foreground/50">No feed</span>
+                        );
+                        const lastSync = new Date(fh.last_sync);
+                        const now = new Date();
+                        const hoursAgo = Math.floor((now.getTime() - lastSync.getTime()) / (1000 * 60 * 60));
+                        const daysAgo = Math.floor(hoursAgo / 24);
+                        const isHealthy = hoursAgo < 26;
+                        const isWarning = hoursAgo >= 26 && hoursAgo < 72;
+                        const isStale = hoursAgo >= 72;
+
+                        let timeLabel: string;
+                        if (hoursAgo < 1) timeLabel = "< 1h ago";
+                        else if (hoursAgo < 24) timeLabel = `${hoursAgo}h ago`;
+                        else timeLabel = `${daysAgo}d ago`;
+
+                        return (
+                          <div className="space-y-0.5" title={`Last sync: ${lastSync.toLocaleString()}\nVehicles scanned: ${fh.vehicles_scanned}\nNew: ${fh.new_vehicles}\nSource: ${fh.source}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                                isHealthy ? "bg-success" : isWarning ? "bg-warning animate-pulse" : "bg-destructive"
+                              }`} />
+                              <span className={`text-[10px] font-medium ${
+                                isHealthy ? "text-success" : isWarning ? "text-warning" : "text-destructive"
+                              }`}>
+                                {isHealthy ? "Active" : isWarning ? "Delayed" : "Stale"}
+                              </span>
+                            </div>
+                            <div className="text-[9px] text-muted-foreground">
+                              {timeLabel} · {fh.vehicles_scanned} vehicles
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <button
