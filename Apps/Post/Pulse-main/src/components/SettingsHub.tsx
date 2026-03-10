@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/Contexts/ThemeContext";
+import { useAuth } from "@/Contexts/AuthContext";
 
 // ── Types ──────────────────────────────────────────────
 type SettingsTab = "profile" | "dms" | "ai" | "users" | "appearance";
@@ -331,6 +332,7 @@ function AICustomization({
 
 // ── 4. User Management ─────────────────────────────────
 function UserManagement() {
+  const { activeDealerId } = useAuth();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -339,10 +341,10 @@ function UserManagement() {
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [postingStats, setPostingStats] = useState<Record<string, number>>({});
 
-  useEffect(() => { loadStaff(); loadPostingStats(); }, []);
+  useEffect(() => { if (activeDealerId) { loadStaff(); loadPostingStats(); } }, [activeDealerId]);
 
   const loadStaff = async () => {
-    const { data } = await supabase.from("staff").select("*").order("created_at", { ascending: true });
+    const { data } = await supabase.from("staff").select("*").eq("dealer_id", activeDealerId).order("created_at", { ascending: true });
     setStaff((data as unknown as Staff[]) || []);
     setLoading(false);
   };
@@ -351,6 +353,7 @@ function UserManagement() {
     const { data } = await supabase
       .from("vehicles")
       .select("posted_by_staff_id")
+      .eq("dealer_id", activeDealerId)
       .eq("synced_to_facebook", true)
       .not("posted_by_staff_id", "is", null);
     if (data) {
@@ -370,6 +373,7 @@ function UserManagement() {
       phone: form.phone.trim() || null,
       facebook_account: form.facebook_account.trim() || null,
       role: form.role,
+      dealer_id: activeDealerId,
     });
     if (error) { toast.error("Failed to add staff member"); return; }
     toast.success(`${form.name} added to team`);
