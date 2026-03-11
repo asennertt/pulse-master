@@ -343,7 +343,16 @@ const Index = () => {
 
       {postVehicle && <GeneratePostPanel vehicle={postVehicle} onClose={() => setPostVehicle(null)} />}
       {dispatchVehicle && <DispatcherPanel vehicle={dispatchVehicle} onClose={() => setDispatchVehicle(null)} onSynced={handleSynced} />}
-      {imageSorterVehicle && <SmartImageSorter vehicle={imageSorterVehicle} onClose={() => setImageSorterVehicle(null)} />}
+      {imageSorterVehicle && (
+        <SmartImageSorter
+          vehicle={imageSorterVehicle}
+          onClose={() => setImageSorterVehicle(null)}
+          onImagesUpdated={(vehicleId, newImages) => {
+            setVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, images: newImages } : v));
+            setImageSorterVehicle(prev => prev && prev.id === vehicleId ? { ...prev, images: newImages } : prev);
+          }}
+        />
+      )}
       {showDMSLog && <DMSFeedLog onClose={() => setShowDMSLog(false)} />}
       {marketplaceVehicle && (
         <MarketplaceDrawer

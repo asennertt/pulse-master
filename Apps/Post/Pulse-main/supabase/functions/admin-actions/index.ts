@@ -121,6 +121,24 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (action === "setup_storage_bucket") {
+    const bucketName = body.bucket_name || "vehicle-photos";
+    // Create bucket (public so images can be viewed)
+    const { data: bucket, error: bucketErr } = await supabaseAdmin.storage.createBucket(bucketName, {
+      public: true,
+      fileSizeLimit: 10 * 1024 * 1024, // 10MB
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    });
+
+    return new Response(JSON.stringify({
+      success: !bucketErr,
+      bucket,
+      error: bucketErr?.message,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   if (action === "add_body_style_column") {
     // Use service role to add the column
     const { data, error } = await supabaseAdmin.rpc("exec_sql", {

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Settings, Building2, Sparkles, Users, Save, Upload,
   Phone, Globe, MapPin, Palette, Trash2,
-  Brain, Eye, Shield, Mail, Facebook, CheckCircle2, XCircle,
+  Brain, Eye, Shield, Mail, CheckCircle2,
   Plus, Loader2, Database, Link2, Copy, BarChart3,
   Sun, Moon, Monitor,
 } from "lucide-react";
@@ -34,7 +34,6 @@ interface Staff {
   name: string;
   email: string | null;
   phone: string | null;
-  facebook_account: string | null;
   role: string;
   active: boolean;
   created_at: string;
@@ -336,7 +335,7 @@ function UserManagement() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", facebook_account: "", role: "salesperson" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "salesperson" });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [postingStats, setPostingStats] = useState<Record<string, number>>({});
@@ -371,13 +370,12 @@ function UserManagement() {
       name: form.name.trim(),
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
-      facebook_account: form.facebook_account.trim() || null,
       role: form.role,
       dealer_id: activeDealerId,
     });
     if (error) { toast.error("Failed to add staff member"); return; }
     toast.success(`${form.name} added to team`);
-    setForm({ name: "", email: "", phone: "", facebook_account: "", role: "salesperson" });
+    setForm({ name: "", email: "", phone: "", role: "salesperson" });
     setShowAdd(false);
     loadStaff();
   };
@@ -505,7 +503,6 @@ function UserManagement() {
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full Name *" className={inputCls} />
             <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="Email" className={inputCls} />
             <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="Phone" className={inputCls} />
-            <input value={form.facebook_account} onChange={e => setForm(f => ({ ...f, facebook_account: e.target.value }))} placeholder="Facebook Account" className={inputCls} />
           </div>
           <div className="flex items-center gap-2">
             <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="rounded-md bg-secondary border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
@@ -529,7 +526,6 @@ function UserManagement() {
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Name</th>
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Role</th>
                   <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Contact</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">FB Account</th>
                   <th className="text-center px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Posts</th>
                   <th className="text-center px-4 py-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Status</th>
                 </tr>
@@ -563,21 +559,7 @@ function UserManagement() {
                         {!s.email && !s.phone && <span className="text-muted-foreground/50">—</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      {s.facebook_account ? (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Facebook className="h-3.5 w-3.5 text-primary" />
-                          <span className="text-foreground">{s.facebook_account}</span>
-                          <CheckCircle2 className="h-3 w-3 text-success" />
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/50">
-                          <Facebook className="h-3.5 w-3.5" />
-                          <span>Not linked</span>
-                          <XCircle className="h-3 w-3" />
-                        </div>
-                      )}
-                    </td>
+
                     <td className="px-4 py-3 text-center">
                       <span className="text-sm font-bold text-primary">{postingStats[s.id] || 0}</span>
                     </td>
