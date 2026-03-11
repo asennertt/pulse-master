@@ -17,8 +17,8 @@ const faqs = [
     a: "No — Pulse sits on top of your existing systems. We integrate with your DMS so you don't have to change your workflow.",
   },
   {
-    q: "What DMS platforms do you support?",
-    a: "We support DealerTrack, RouteOne, CDK, Reynolds & Reynolds, and most major DMS platforms. You can also upload a CSV.",
+    q: "What DMS or inventory systems do you support?",
+    a: "Pulse works with any DMS or inventory management system that has an export function. Export your inventory as a CSV and upload it directly — no special integration required. We also offer direct connections for popular platforms like DealerTrack, CDK, and more.",
   },
   {
     q: "Why Facebook Marketplace?",
