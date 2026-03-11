@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, Plus, Phone, Mail, Facebook, CheckCircle2, XCircle } from "lucide-react";
+import { Users, Plus, Phone, Mail, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Staff {
@@ -8,7 +8,6 @@ interface Staff {
   name: string;
   email: string | null;
   phone: string | null;
-  facebook_account: string | null;
   role: string;
   active: boolean;
   created_at: string;
@@ -18,7 +17,7 @@ export function StaffDashboard() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", facebook_account: "", role: "salesperson" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "salesperson" });
 
   useEffect(() => {
     loadStaff();
@@ -37,12 +36,11 @@ export function StaffDashboard() {
       name: form.name.trim(),
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
-      facebook_account: form.facebook_account.trim() || null,
       role: form.role,
     });
     if (error) { toast.error("Failed to add staff member"); return; }
     toast.success(`${form.name} added to team`);
-    setForm({ name: "", email: "", phone: "", facebook_account: "", role: "salesperson" });
+    setForm({ name: "", email: "", phone: "", role: "salesperson" });
     setShowAdd(false);
     loadStaff();
   };
@@ -73,7 +71,6 @@ export function StaffDashboard() {
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full Name *" className="rounded-md bg-secondary border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
             <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="Email" className="rounded-md bg-secondary border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
             <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="Phone" className="rounded-md bg-secondary border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
-            <input value={form.facebook_account} onChange={e => setForm(f => ({ ...f, facebook_account: e.target.value }))} placeholder="Facebook Account" className="rounded-md bg-secondary border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
           </div>
           <div className="flex items-center gap-2">
             <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="rounded-md bg-secondary border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
@@ -104,7 +101,6 @@ export function StaffDashboard() {
               <div className="space-y-1 text-xs text-muted-foreground">
                 {s.email && <div className="flex items-center gap-1.5"><Mail className="h-3 w-3" /> {s.email}</div>}
                 {s.phone && <div className="flex items-center gap-1.5"><Phone className="h-3 w-3" /> {s.phone}</div>}
-                {s.facebook_account && <div className="flex items-center gap-1.5"><Facebook className="h-3 w-3" /> {s.facebook_account}</div>}
               </div>
             </div>
           ))}

@@ -59,11 +59,11 @@ function App() {
             }
           />
 
-          {/* ADMIN ROUTES */}
+          {/* DEALER ADMIN */}
           <Route
             path="/admin"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requireDealerAdmin>
                 <Admin />
               </ProtectedRoute>
             }
