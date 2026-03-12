@@ -22,7 +22,7 @@ import type { InventoryFilterState } from "@/components/InventoryFilters";
 import { fetchVehicles, updateVehicleStatus, updateFacebookSync, syncInventoryFromDMS } from "@/services/vehicleService";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Database, RefreshCw, Loader2, Users, Car, UserCog, DownloadCloud, Shield, Settings, LogOut, Eye, X, Search } from "lucide-react";
+import { Database, RefreshCw, Loader2, Users, Car, UserCog, DownloadCloud, Shield, Settings, LogOut, Eye, X, Search, Sun, Moon } from "lucide-react";
 import { useRef } from "react";
 import pulseLogoDark from "@/assets/pulse-logo.png";
 import pulseLogoLight from "@/assets/pulse-logo-blue.png";
@@ -40,7 +40,7 @@ interface UserPosting {
 const Index = () => {
   const navigate = useNavigate();
   const { isSuperAdmin, isDealerAdmin, signOut, impersonatingDealerId, setImpersonatingDealerId, profile, user, activeDealerId } = useAuth();
-  const { theme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const isAdmin = isSuperAdmin || isDealerAdmin;
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -294,6 +294,9 @@ const Index = () => {
                 <Shield className="h-3.5 w-3.5" /> Admin
               </button>
             )}
+            <button onClick={toggleTheme} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors" title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
             <button onClick={signOut} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <LogOut className="h-3.5 w-3.5" />
             </button>
