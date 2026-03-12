@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,14 +39,13 @@ serve(async (req) => {
     const user = userData.user;
     if (!user) throw new Error("User not authenticated");
 
-    // Verify super admin via profiles table
-    const { data: profile } = await supabaseClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    // Verify super admin via user_roles table
+    const { data: hasSuperAdmin } = await supabaseClient.rpc("has_role", {
+      _user_id: user.id,
+      _role: "super_admin",
+    });
 
-    if (profile?.role !== "super_admin") {
+    if (!hasSuperAdmin) {
       throw new Error("Unauthorized: super admin access required");
     }
 
