@@ -16,6 +16,8 @@ import { SoldAlertsBanner } from "@/components/SoldAlertsBanner";
 import { IngestionEngine } from "@/components/IngestionEngine";
 import { RenewalsBanner } from "@/components/RenewalsBanner";
 import { SettingsHub } from "@/components/SettingsHub";
+import { InventoryFilters, filterVehicles, defaultFilters } from "@/components/InventoryFilters";
+import type { InventoryFilterState } from "@/components/InventoryFilters";
 
 import { fetchVehicles, updateVehicleStatus, updateFacebookSync, syncInventoryFromDMS } from "@/services/vehicleService";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,6 +45,7 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>("inventory");
   const [activeFilter, setActiveFilter] = useState<VehicleStatus | "All">("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [inventoryFilters, setInventoryFilters] = useState<InventoryFilterState>(defaultFilters);
   const [postVehicle, setPostVehicle] = useState<Vehicle | null>(null);
   const [dispatchVehicle, setDispatchVehicle] = useState<Vehicle | null>(null);
   const [imageSorterVehicle, setImageSorterVehicle] = useState<Vehicle | null>(null);
@@ -152,8 +155,10 @@ const Index = () => {
         `${v.year} ${v.make} ${v.model} ${v.trim || ""} ${v.vin} ${v.exterior_color || ""}`.toLowerCase().includes(q)
       );
     }
+    // Apply inventory filters (make, posted status, sort)
+    result = filterVehicles(result, inventoryFilters, userPostings);
     return result;
-  }, [vehicles, activeFilter, searchQuery]);
+  }, [vehicles, activeFilter, searchQuery, inventoryFilters, userPostings]);
 
   const handleMarkSold = async (id: string) => {
     const vehicle = vehicles.find(v => v.id === id);
@@ -310,7 +315,7 @@ const Index = () => {
                 <StatusFilter activeFilter={activeFilter} onFilterChange={setActiveFilter} counts={counts} />
               </aside>
               <main className="flex-1">
-                <div className="relative mb-4">
+                <div className="relative mb-3">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search by make, model, year, VIN..."
@@ -318,6 +323,16 @@ const Index = () => {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
                   />
+                </div>
+                <div className="flex items-center justify-between mb-4">
+                  <InventoryFilters
+                    vehicles={activeFilter === "All" ? vehicles : vehicles.filter(v => v.status === activeFilter)}
+                    filters={inventoryFilters}
+                    onChange={setInventoryFilters}
+                  />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap ml-3">
+                    {filtered.length} vehicle{filtered.length !== 1 ? "s" : ""}
+                  </span>
                 </div>
                 <div className="flex gap-2 mb-4 md:hidden overflow-x-auto pb-2">
                   {(["All", "available", "pending", "sold"] as const).map(f => (
