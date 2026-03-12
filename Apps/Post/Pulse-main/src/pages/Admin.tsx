@@ -22,57 +22,11 @@ interface StaffMember {
   dealership_id: string;
 }
 
-// ── Admin PIN Guard ────────────────────────────────────
-const ADMIN_PIN = "autopilot2026";
-
-function AdminPinGate({ onUnlock }: { onUnlock: () => void }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === ADMIN_PIN) {
-      sessionStorage.setItem("admin_unlocked", "true");
-      onUnlock();
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <form onSubmit={handleSubmit} className="glass-card rounded-xl p-8 w-full max-w-sm space-y-4">
-        <div className="flex items-center gap-2 justify-center">
-          <Shield className="h-6 w-6 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">Dealer Admin</h1>
-        </div>
-        <p className="text-xs text-muted-foreground text-center">Enter admin passphrase to continue</p>
-        <input
-          type="password"
-          value={pin}
-          onChange={e => { setPin(e.target.value); setError(false); }}
-          placeholder="Admin passphrase"
-          autoFocus
-          className={`w-full rounded-lg bg-secondary border px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary ${error ? "border-destructive ring-destructive/50" : "border-border"}`}
-        />
-        {error && <p className="text-xs text-destructive text-center">Invalid passphrase</p>}
-        <button type="submit" className="w-full rounded-lg bg-primary text-primary-foreground py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors">
-          Unlock Dashboard
-        </button>
-      </form>
-    </div>
-  );
-}
-
 // ── Tab types ──────────────────────────────────────────
 type AdminTab = "analytics" | "staff" | "inventory";
 
 // ── Main Admin Page ────────────────────────────────────
 export default function AdminDashboard() {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("admin_unlocked") === "true");
-
-  if (!unlocked) return <AdminPinGate onUnlock={() => setUnlocked(true)} />;
   return <AdminContent />;
 }
 
