@@ -24,7 +24,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Database, RefreshCw, Loader2, Users, Car, UserCog, DownloadCloud, Shield, Settings, LogOut, Eye, X, Search } from "lucide-react";
 import { useRef } from "react";
-import pulseLogo from "@/assets/pulse-logo.png";
+import pulseLogoDark from "@/assets/pulse-logo.png";
+import pulseLogoLight from "@/assets/pulse-logo-blue.png";
+import { useTheme } from "@/Contexts/ThemeContext";
 import { Input } from "@/components/ui/input";
 
 type Tab = "inventory" | "leads" | "staff" | "ingestion" | "settings" | "ai-settings";
@@ -38,6 +40,7 @@ interface UserPosting {
 const Index = () => {
   const navigate = useNavigate();
   const { isSuperAdmin, isDealerAdmin, signOut, impersonatingDealerId, setImpersonatingDealerId, profile, user, activeDealerId } = useAuth();
+  const { theme } = useTheme();
   const isAdmin = isSuperAdmin || isDealerAdmin;
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -245,7 +248,7 @@ const Index = () => {
               <img src={dealerLogo} alt="Dealership" className="h-10 w-auto object-contain max-w-[120px]" />
             )}
             <div className="h-6 w-px bg-border" style={{ display: dealerLogo ? undefined : "none" }} />
-            <img src={pulseLogo} alt="Pulse Posting" className="h-14 w-auto object-contain" />
+            <img src={theme === "light" ? pulseLogoLight : pulseLogoDark} alt="Pulse Posting" className="h-14 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center rounded-lg bg-secondary border border-border p-0.5">
