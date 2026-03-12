@@ -7,6 +7,7 @@ import { ProtectedRoute } from "./Contexts/ProtectedRoute";
 import Auth from "./pages/Auth";
 import PostDashboard from "./pages/PostDashboard";
 import Admin from "./pages/Admin";
+import Billing from "./pages/Billing";
 import SuperAdmin from "./pages/SuperAdmin";
 import Onboarding from "./pages/Onboarding";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
@@ -44,8 +45,17 @@ function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requireSubscription>
                 <PostDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/billing"
+            element={
+              <ProtectedRoute>
+                <Billing />
               </ProtectedRoute>
             }
           />
@@ -63,7 +73,7 @@ function App() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute requireDealerAdmin>
+              <ProtectedRoute requireDealerAdmin requireSubscription>
                 <Admin />
               </ProtectedRoute>
             }

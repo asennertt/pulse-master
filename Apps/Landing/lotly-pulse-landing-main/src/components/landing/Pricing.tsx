@@ -108,7 +108,7 @@ const Pricing = () => {
 
         <p className="mt-7 text-center text-sm text-muted-foreground">
           Need enterprise pricing or custom features?{" "}
-          <a href="#" className="text-primary font-medium hover:underline">Contact sales</a>
+          <a href="mailto:sales@lotlyauto.com" className="text-primary font-medium hover:underline">Contact sales</a>
         </p>
       </div>
     </section>
