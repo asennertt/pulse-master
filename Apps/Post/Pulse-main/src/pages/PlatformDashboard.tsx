@@ -571,12 +571,19 @@ function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => v
   };
 
   const generateInvite = async () => {
-    const { data, error } = await supabase.from("invitation_links").insert({}).select().single();
-    if (error) { toast.error("Failed to generate invite"); return; }
-    const link = `${window.location.origin}/auth?invite=${(data as any).token}`;
-    setInviteLink(link);
-    navigator.clipboard.writeText(link);
-    toast.success("Invitation link copied to clipboard!");
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-invite");
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const token = data?.token;
+      if (!token) throw new Error("No token returned");
+      const link = `${window.location.origin}/auth?invite=${token}`;
+      setInviteLink(link);
+      navigator.clipboard.writeText(link);
+      toast.success("Invitation link copied to clipboard!");
+    } catch (e: any) {
+      toast.error("Failed to generate invite", { description: e.message });
+    }
   };
 
   const tierColors: Record<string, string> = {
