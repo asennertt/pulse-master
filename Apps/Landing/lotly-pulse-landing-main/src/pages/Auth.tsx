@@ -376,7 +376,7 @@ const Auth = () => {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                  placeholder="Enter your password"
                   className="bg-background/50 border-primary/10"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

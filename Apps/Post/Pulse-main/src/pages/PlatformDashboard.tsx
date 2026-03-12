@@ -41,14 +41,7 @@ interface ActivationEntry {
   dealership_name?: string;
 }
 
-interface UsageSummary {
-  dealership_id: string;
-  dealership_name: string;
-  total_credits: number;
-  action_counts: Record<string, number>;
-}
-
-type PlatformTab = "overview" | "dealers" | "activation" | "usage" | "billing" | "health" | "audit" | "settings" | "onboarding";
+type PlatformTab = "overview" | "dealers" | "activation" | "revenue" | "signups" | "vehicle-stats" | "sftp-status" | "billing" | "health" | "audit" | "settings" | "onboarding";
 
 // ────────────────── Main Page ──────────────────
 export default function PlatformDashboard() {
@@ -83,7 +76,10 @@ export default function PlatformDashboard() {
     { key: "dealers", label: "Dealers", icon: Building2, section: "Management" },
     { key: "onboarding", label: "Onboarding Guide", icon: BookOpen },
     { key: "activation", label: "Verification", icon: Clock },
-    { key: "usage", label: "Usage", icon: BarChart3 },
+    { key: "revenue", label: "Revenue", icon: DollarSign, section: "Insights" },
+    { key: "signups", label: "Recent Signups", icon: Plus },
+    { key: "vehicle-stats", label: "Vehicle Stats", icon: Car },
+    { key: "sftp-status", label: "SFTP Status", icon: FolderSync },
     { key: "billing", label: "Billing", icon: CreditCard, section: "Finance" },
     { key: "audit", label: "Audit Log", icon: FileText, section: "System" },
     { key: "health", label: "System Health", icon: Activity },
@@ -177,7 +173,10 @@ export default function PlatformDashboard() {
           {tab === "dealers" && <DealerOverview onImpersonate={handleImpersonate} />}
           {tab === "onboarding" && <OnboardingGuide onNavigate={setTab} />}
           {tab === "activation" && <VerificationQueue />}
-          {tab === "usage" && <APIUsageMonitor />}
+          {tab === "revenue" && <RevenueOverview />}
+          {tab === "signups" && <RecentSignups />}
+          {tab === "vehicle-stats" && <VehicleStats />}
+          {tab === "sftp-status" && <SFTPStatus />}
           {tab === "billing" && <BillingOverview />}
           {tab === "audit" && <AuditLog />}
           {tab === "health" && <SystemHealthView />}
@@ -192,8 +191,7 @@ export default function PlatformDashboard() {
 function PlatformOverview({ onNavigate }: { onNavigate: (tab: PlatformTab) => void }) {
   const [stats, setStats] = useState({
     totalDealers: 0, activeDealers: 0, pendingVerifications: 0,
-    totalVehicles: 0, activeVehicles: 0, aiPostsToday: 0,
-    monthlyCredits: 0,
+    totalVehicles: 0, activeVehicles: 0, recentSignups: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -202,15 +200,12 @@ function PlatformOverview({ onNavigate }: { onNavigate: (tab: PlatformTab) => vo
   }, []);
 
   const loadOverview = async () => {
-    const today = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [dealers, vehicles, pendingQueue, todayUsage, monthUsage] = await Promise.all([
-      supabase.from("dealerships").select("id, status"),
+    const [dealers, vehicles, pendingQueue] = await Promise.all([
+      supabase.from("dealerships").select("id, status, created_at"),
       supabase.from("vehicles").select("id, status"),
       supabase.from("activation_queue").select("id").eq("status", "pending"),
-      supabase.from("usage_tracking").select("*").gte("created_at", today),
-      supabase.from("usage_tracking").select("credits_used").gte("created_at", monthStart),
     ]);
 
     setStats({
@@ -219,8 +214,7 @@ function PlatformOverview({ onNavigate }: { onNavigate: (tab: PlatformTab) => vo
       pendingVerifications: (pendingQueue.data || []).length,
       totalVehicles: (vehicles.data || []).length,
       activeVehicles: (vehicles.data || []).filter((v: any) => v.status === "available").length,
-      aiPostsToday: (todayUsage.data || []).filter((u: any) => u.action_type === "ai_post").length,
-      monthlyCredits: (monthUsage.data || []).reduce((sum: number, u: any) => sum + (u.credits_used || 0), 0),
+      recentSignups: (dealers.data || []).filter((d: any) => d.created_at >= weekAgo).length,
     });
     setLoading(false);
   };
@@ -230,10 +224,10 @@ function PlatformOverview({ onNavigate }: { onNavigate: (tab: PlatformTab) => vo
   const cards = [
     { label: "Active Dealers", value: stats.activeDealers, total: stats.totalDealers, icon: Building2, color: "text-primary", bg: "bg-primary/10 border-primary/20", onClick: () => onNavigate("dealers") },
     { label: "Pending Verifications", value: stats.pendingVerifications, icon: Clock, color: "text-warning", bg: "bg-warning/10 border-warning/20", onClick: () => onNavigate("activation") },
-    { label: "Total Vehicles", value: stats.totalVehicles, icon: Car, color: "text-success", bg: "bg-success/10 border-success/20" },
-    { label: "Active Listings", value: stats.activeVehicles, icon: Zap, color: "text-primary", bg: "bg-primary/10 border-primary/20" },
-    { label: "AI Posts Today", value: stats.aiPostsToday, icon: Sparkles, color: "text-primary", bg: "bg-primary/10 border-primary/20", onClick: () => onNavigate("usage") },
-    { label: "Monthly Credits", value: stats.monthlyCredits, icon: CreditCard, color: "text-foreground", bg: "bg-secondary border-border", onClick: () => onNavigate("usage") },
+    { label: "Total Vehicles", value: stats.totalVehicles, icon: Car, color: "text-success", bg: "bg-success/10 border-success/20", onClick: () => onNavigate("vehicle-stats") },
+    { label: "Active Listings", value: stats.activeVehicles, icon: Zap, color: "text-primary", bg: "bg-primary/10 border-primary/20", onClick: () => onNavigate("vehicle-stats") },
+    { label: "New This Week", value: stats.recentSignups, icon: Plus, color: "text-success", bg: "bg-success/10 border-success/20", onClick: () => onNavigate("signups") },
+    { label: "Revenue", value: "→", icon: DollarSign, color: "text-foreground", bg: "bg-secondary border-border", onClick: () => onNavigate("revenue") },
   ];
 
   return (
@@ -280,8 +274,8 @@ function PlatformOverview({ onNavigate }: { onNavigate: (tab: PlatformTab) => vo
           {[
             { label: "Manage Dealers", icon: Building2, action: () => onNavigate("dealers") },
             { label: "Review Verifications", icon: Clock, action: () => onNavigate("activation") },
-            { label: "View Usage", icon: BarChart3, action: () => onNavigate("usage") },
-            { label: "System Health", icon: Activity, action: () => onNavigate("health") },
+            { label: "Revenue", icon: DollarSign, action: () => onNavigate("revenue") },
+            { label: "SFTP Status", icon: FolderSync, action: () => onNavigate("sftp-status") },
           ].map(q => (
             <button
               key={q.label}
@@ -901,84 +895,523 @@ function VerificationQueue() {
   );
 }
 
-// ────────────────── API Usage Monitor ──────────────────
-function APIUsageMonitor() {
-  const [summaries, setSummaries] = useState<UsageSummary[]>([]);
+// ────────────────── Revenue Overview ──────────────────
+function RevenueOverview() {
+  const [data, setData] = useState<{ summary: any; customers: any[] } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { loadUsage(); }, []);
+  useEffect(() => { loadRevenue(); }, []);
 
-  const loadUsage = async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const [usage, dealers] = await Promise.all([
-      supabase.from("usage_tracking").select("*").gte("created_at", monthStart),
-      supabase.from("dealerships").select("id, name"),
-    ]);
-    const dealerMap = new Map((dealers.data || []).map((d: any) => [d.id, d.name]));
-    const grouped: Record<string, UsageSummary> = {};
-    for (const u of (usage.data || []) as any[]) {
-      if (!grouped[u.dealership_id]) {
-        grouped[u.dealership_id] = { dealership_id: u.dealership_id, dealership_name: dealerMap.get(u.dealership_id) || "Unknown", total_credits: 0, action_counts: {} };
-      }
-      grouped[u.dealership_id].total_credits += u.credits_used;
-      grouped[u.dealership_id].action_counts[u.action_type] = (grouped[u.dealership_id].action_counts[u.action_type] || 0) + u.credits_used;
+  const loadRevenue = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: billingData, error: fnError } = await supabase.functions.invoke("admin-billing");
+      if (fnError) throw new Error(fnError.message);
+      if (billingData?.error) throw new Error(billingData.error);
+      setData({ summary: billingData.summary, customers: billingData.customers || [] });
+    } catch (err: any) {
+      setError(err.message || "Failed to load revenue data");
+    } finally {
+      setLoading(false);
     }
-    setSummaries(Object.values(grouped).sort((a, b) => b.total_credits - a.total_credits));
+  };
+
+  const formatCents = (cents: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  if (error) return (
+    <div className="glass-card rounded-xl p-6 text-center space-y-3">
+      <AlertTriangle className="h-8 w-8 text-warning mx-auto" />
+      <p className="text-sm text-muted-foreground">{error}</p>
+      <button onClick={loadRevenue} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"><RefreshCw className="h-3.5 w-3.5" /> Retry</button>
+    </div>
+  );
+
+  const summary = data?.summary;
+  const customers = data?.customers || [];
+  const activeSubs = customers.filter((c: any) => c.subscriptions?.some((s: any) => s.status === "active" || s.status === "trialing"));
+  const starterCount = activeSubs.filter((c: any) => c.monthly_amount_cents <= 4900).length;
+  const unlimitedCount = activeSubs.filter((c: any) => c.monthly_amount_cents > 4900).length;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+          <DollarSign className="h-5 w-5 text-success" /> Revenue Overview
+        </h2>
+        <a href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <ExternalLink className="h-3.5 w-3.5" /> Stripe Dashboard
+        </a>
+      </div>
+
+      {/* MRR & Subscribers */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-success/10 border border-success/20 flex items-center justify-center">
+              <DollarSign className="h-5 w-5 text-success" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{summary ? formatCents(summary.mrr_cents) : "$0"}</div>
+              <div className="text-xs text-muted-foreground">Monthly Recurring Revenue</div>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{summary?.active_subscribers || 0}</div>
+              <div className="text-xs text-muted-foreground">Active Subscribers</div>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Zap className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{starterCount}</div>
+              <div className="text-xs text-muted-foreground">Starter ($49/mo)</div>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl p-5 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-success/10 border border-success/20 flex items-center justify-center">
+              <Sparkles className="h-5 w-5 text-success" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{unlimitedCount}</div>
+              <div className="text-xs text-muted-foreground">Unlimited ($99/mo)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Subscriber Breakdown */}
+      <div className="glass-card rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground">Active Subscribers</h3>
+        {activeSubs.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">No active subscribers yet</div>
+        ) : (
+          <div className="space-y-2">
+            {activeSubs.map((c: any) => (
+              <div key={c.customer_id} className="flex items-center gap-4 rounded-lg bg-secondary/40 border border-border p-3">
+                <div className="h-2 w-2 rounded-full bg-success shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-foreground truncate">{c.dealership?.name || c.name || c.email || "Unknown"}</div>
+                  <div className="text-[10px] text-muted-foreground">{c.email}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-bold text-success">{formatCents(c.monthly_amount_cents)}</div>
+                  <div className="text-[10px] text-muted-foreground">/month</div>
+                </div>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  c.monthly_amount_cents > 4900 ? "bg-success/15 text-success border border-success/25" : "bg-primary/15 text-primary border border-primary/25"
+                }`}>
+                  {c.monthly_amount_cents > 4900 ? "Unlimited" : "Starter"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="text-center">
+        <button onClick={loadRevenue} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────── Recent Signups ──────────────────
+function RecentSignups() {
+  const [dealers, setDealers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { loadSignups(); }, []);
+
+  const loadSignups = async () => {
+    const { data } = await supabase.from("dealerships")
+      .select("id, name, slug, subscription_tier, status, owner_email, created_at")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setDealers(data || []);
     setLoading(false);
   };
 
-  const maxCredits = Math.max(...summaries.map(s => s.total_credits), 1);
-  const actionLabels: Record<string, string> = { ai_post: "AI Posts (tokens)", image_optimize: "Image Optimizations", listing_sync: "FB Listing Syncs", lead_capture: "Lead Captures" };
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const timeAgo = (iso: string) => {
+    const ms = Date.now() - new Date(iso).getTime();
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    if (hours < 1) return "Just now";
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return `${Math.floor(days / 7)}w ago`;
+  };
+
+  const tierColors: Record<string, string> = {
+    trial: "bg-muted text-muted-foreground",
+    pro: "bg-success/20 text-success",
+    enterprise: "bg-primary/20 text-primary",
+    starter: "bg-primary/20 text-primary",
+    unlimited: "bg-success/20 text-success",
+  };
+
+  const statusColors: Record<string, string> = {
+    active: "bg-success/15 text-success",
+    pending: "bg-warning/15 text-warning",
+    inactive: "bg-muted text-muted-foreground",
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-primary" /> API Usage This Month
-        </h2>
-        <div className="text-xs text-muted-foreground">
-          Total: <span className="text-primary font-bold">{summaries.reduce((s, x) => s + x.total_credits, 0)}</span> credits
-        </div>
-      </div>
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+        <Plus className="h-5 w-5 text-success" /> Recent Signups
+        <span className="ml-2 rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] text-muted-foreground">Last 20</span>
+      </h2>
+
       {loading ? (
         <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
-      ) : summaries.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">No usage data this month</div>
+      ) : dealers.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">No dealerships yet</div>
       ) : (
         <div className="space-y-2">
-          {summaries.map(s => (
-            <div key={s.dealership_id} className="glass-card rounded-lg overflow-hidden">
-              <button onClick={() => setExpanded(expanded === s.dealership_id ? null : s.dealership_id)} className="w-full flex items-center gap-4 px-4 py-3 text-left">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-foreground text-sm">{s.dealership_name}</div>
-                  <div className="mt-1.5 h-2 rounded-full bg-secondary overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-primary to-primary/60 transition-all duration-500" style={{ width: `${(s.total_credits / maxCredits) * 100}%` }} />
-                  </div>
+          {dealers.map(d => (
+            <div key={d.id} className="glass-card rounded-lg p-4 flex items-center gap-4">
+              <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                <Building2 className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-foreground text-sm truncate">{d.name}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColors[d.status] || statusColors.inactive}`}>
+                    {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+                  </span>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="text-lg font-bold text-primary">{s.total_credits}</div>
-                  <div className="text-[10px] text-muted-foreground">credits</div>
-                </div>
-                {expanded === s.dealership_id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-              </button>
-              {expanded === s.dealership_id && (
-                <div className="px-4 pb-3 border-t border-border/50 pt-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {Object.entries(s.action_counts).map(([action, count]) => (
-                      <div key={action} className="rounded-md bg-secondary/60 border border-border p-2 text-center">
-                        <div className="text-sm font-bold text-foreground">{count}</div>
-                        <div className="text-[9px] text-muted-foreground">{actionLabels[action] || action}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                <div className="text-xs text-muted-foreground">{d.owner_email || d.slug}</div>
+              </div>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${tierColors[d.subscription_tier] || tierColors.trial}`}>
+                {d.subscription_tier.toUpperCase()}
+              </span>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-medium text-foreground">{formatDate(d.created_at)}</div>
+                <div className="text-[10px] text-muted-foreground">{timeAgo(d.created_at)}</div>
+              </div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ────────────────── Vehicle Stats ──────────────────
+function VehicleStats() {
+  const [stats, setStats] = useState<{
+    total: number; available: number; sold: number; pending: number;
+    byDealer: { id: string; name: string; total: number; available: number; sold: number }[];
+    addedThisWeek: number; addedThisMonth: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { loadStats(); }, []);
+
+  const loadStats = async () => {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+
+    const [vehiclesRes, dealersRes] = await Promise.all([
+      supabase.from("vehicles").select("id, status, dealership_id, created_at"),
+      supabase.from("dealerships").select("id, name"),
+    ]);
+
+    const vehicles = (vehiclesRes.data || []) as any[];
+    const dealerMap = new Map((dealersRes.data || []).map((d: any) => [d.id, d.name]));
+
+    const byDealer: Record<string, { id: string; name: string; total: number; available: number; sold: number }> = {};
+    let total = 0, available = 0, sold = 0, pending = 0, addedThisWeek = 0, addedThisMonth = 0;
+
+    for (const v of vehicles) {
+      total++;
+      if (v.status === "available") available++;
+      else if (v.status === "sold") sold++;
+      else pending++;
+
+      if (v.created_at >= weekAgo) addedThisWeek++;
+      if (v.created_at >= monthStart) addedThisMonth++;
+
+      if (v.dealership_id) {
+        if (!byDealer[v.dealership_id]) {
+          byDealer[v.dealership_id] = { id: v.dealership_id, name: dealerMap.get(v.dealership_id) || "Unknown", total: 0, available: 0, sold: 0 };
+        }
+        byDealer[v.dealership_id].total++;
+        if (v.status === "available") byDealer[v.dealership_id].available++;
+        else if (v.status === "sold") byDealer[v.dealership_id].sold++;
+      }
+    }
+
+    setStats({
+      total, available, sold, pending, addedThisWeek, addedThisMonth,
+      byDealer: Object.values(byDealer).sort((a, b) => b.total - a.total),
+    });
+    setLoading(false);
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  if (!stats) return null;
+
+  const maxTotal = Math.max(...stats.byDealer.map(d => d.total), 1);
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+        <Car className="h-5 w-5 text-primary" /> Vehicle Stats
+      </h2>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[
+          { label: "Total Vehicles", value: stats.total, icon: Car, color: "text-primary" },
+          { label: "Available", value: stats.available, icon: Zap, color: "text-success" },
+          { label: "Sold", value: stats.sold, icon: CheckCircle2, color: "text-warning" },
+          { label: "Pending", value: stats.pending, icon: Clock, color: "text-muted-foreground" },
+          { label: "Added This Week", value: stats.addedThisWeek, icon: TrendingUp, color: "text-success" },
+          { label: "Added This Month", value: stats.addedThisMonth, icon: BarChart3, color: "text-primary" },
+        ].map(c => (
+          <div key={c.label} className="stat-gradient rounded-lg border border-border p-4 text-center">
+            <c.icon className={`h-5 w-5 mx-auto mb-2 ${c.color}`} />
+            <div className={`text-xl font-bold ${c.color}`}>{c.value}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* By Dealership */}
+      <div className="glass-card rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground">Vehicles by Dealership</h3>
+        {stats.byDealer.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">No vehicle data</div>
+        ) : (
+          <div className="space-y-3">
+            {stats.byDealer.map(d => (
+              <div key={d.id} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">{d.name}</span>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-success">{d.available} active</span>
+                    <span className="text-warning">{d.sold} sold</span>
+                    <span className="font-bold text-foreground">{d.total} total</span>
+                  </div>
+                </div>
+                <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-primary to-primary/60 transition-all duration-500" style={{ width: `${(d.total / maxTotal) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ────────────────── SFTP Sync Status ──────────────────
+function SFTPStatus() {
+  const [dealers, setDealers] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { loadSFTP(); }, []);
+
+  const loadSFTP = async () => {
+    const [dealersRes, logsRes] = await Promise.all([
+      supabase.from("dealerships").select("id, name, sftp_username, status"),
+      supabase.from("ingestion_logs").select("*").order("created_at", { ascending: false }).limit(200),
+    ]);
+
+    setDealers((dealersRes.data || []) as any[]);
+    setLogs((logsRes.data || []) as any[]);
+    setLoading(false);
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+
+  // Build per-dealer SFTP status
+  const dealerStatuses = dealers.map(d => {
+    const dealerLogs = logs.filter(l => l.dealership_id === d.id || l.dealer_id === d.id);
+    const lastLog = dealerLogs[0] || null;
+    const lastSync = lastLog ? new Date(lastLog.created_at) : null;
+    const now = new Date();
+    const hoursAgo = lastSync ? Math.floor((now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)) : null;
+
+    let syncStatus: "healthy" | "delayed" | "stale" | "never" = "never";
+    if (hoursAgo !== null) {
+      if (hoursAgo < 26) syncStatus = "healthy";
+      else if (hoursAgo < 72) syncStatus = "delayed";
+      else syncStatus = "stale";
+    }
+
+    const recentErrors = dealerLogs.filter(l => l.status === "error").slice(0, 3);
+    const totalSyncs = dealerLogs.length;
+    const successRate = totalSyncs > 0 ? Math.round((dealerLogs.filter(l => l.status === "success").length / totalSyncs) * 100) : 0;
+
+    return {
+      ...d,
+      lastSync,
+      hoursAgo,
+      syncStatus,
+      lastLogStatus: lastLog?.status || null,
+      lastVehiclesScanned: lastLog?.vehicles_scanned || 0,
+      lastNewVehicles: lastLog?.new_vehicles || 0,
+      recentErrors,
+      totalSyncs,
+      successRate,
+    };
+  });
+
+  // Sort: connected first, then by sync status severity
+  const statusOrder = { stale: 0, delayed: 1, healthy: 2, never: 3 };
+  dealerStatuses.sort((a, b) => {
+    const aConn = a.sftp_username ? 0 : 1;
+    const bConn = b.sftp_username ? 0 : 1;
+    if (aConn !== bConn) return aConn - bConn;
+    return (statusOrder[a.syncStatus] || 99) - (statusOrder[b.syncStatus] || 99);
+  });
+
+  const connected = dealerStatuses.filter(d => d.sftp_username);
+  const notConnected = dealerStatuses.filter(d => !d.sftp_username);
+  const healthyCount = connected.filter(d => d.syncStatus === "healthy").length;
+  const delayedCount = connected.filter(d => d.syncStatus === "delayed").length;
+  const staleCount = connected.filter(d => d.syncStatus === "stale").length;
+
+  const formatTime = (date: Date | null) => {
+    if (!date) return "Never";
+    return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  };
+
+  const statusConfig = {
+    healthy: { color: "text-success", bg: "bg-success", label: "Active" },
+    delayed: { color: "text-warning", bg: "bg-warning", label: "Delayed" },
+    stale: { color: "text-destructive", bg: "bg-destructive", label: "Stale" },
+    never: { color: "text-muted-foreground", bg: "bg-muted-foreground/30", label: "No Syncs" },
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+        <FolderSync className="h-5 w-5 text-primary" /> SFTP Sync Status
+      </h2>
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="stat-gradient rounded-lg border border-border p-4 text-center">
+          <Database className="h-5 w-5 mx-auto mb-2 text-primary" />
+          <div className="text-xl font-bold text-primary">{connected.length}</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">SFTP Connected</div>
+        </div>
+        <div className="stat-gradient rounded-lg border border-border p-4 text-center">
+          <CheckCircle2 className="h-5 w-5 mx-auto mb-2 text-success" />
+          <div className="text-xl font-bold text-success">{healthyCount}</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Healthy</div>
+        </div>
+        <div className="stat-gradient rounded-lg border border-border p-4 text-center">
+          <Clock className="h-5 w-5 mx-auto mb-2 text-warning" />
+          <div className="text-xl font-bold text-warning">{delayedCount}</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Delayed</div>
+        </div>
+        <div className="stat-gradient rounded-lg border border-border p-4 text-center">
+          <AlertTriangle className="h-5 w-5 mx-auto mb-2 text-destructive" />
+          <div className="text-xl font-bold text-destructive">{staleCount}</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Stale</div>
+        </div>
+      </div>
+
+      {/* Connected Dealers */}
+      {connected.length > 0 && (
+        <div className="glass-card rounded-xl p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-foreground">Connected Dealerships</h3>
+          <div className="space-y-2">
+            {connected.map(d => {
+              const cfg = statusConfig[d.syncStatus];
+              return (
+                <div key={d.id} className="rounded-lg bg-secondary/40 border border-border p-4 space-y-2">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${cfg.bg} ${d.syncStatus === "delayed" ? "animate-pulse" : ""}`} />
+                      <span className="font-medium text-foreground text-sm truncate">{d.name}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${cfg.color} bg-secondary border border-border`}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0 space-y-0.5">
+                      <div className="text-xs text-muted-foreground">Last sync: <span className="text-foreground font-medium">{formatTime(d.lastSync)}</span></div>
+                      {d.hoursAgo !== null && (
+                        <div className={`text-[10px] ${cfg.color}`}>
+                          {d.hoursAgo < 1 ? "< 1 hour ago" : d.hoursAgo < 24 ? `${d.hoursAgo}h ago` : `${Math.floor(d.hoursAgo / 24)}d ago`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+                    <span>SFTP: <span className="font-mono text-foreground">{d.sftp_username}</span></span>
+                    <span>Vehicles scanned: <span className="text-foreground">{d.lastVehiclesScanned}</span></span>
+                    <span>New: <span className="text-success">{d.lastNewVehicles}</span></span>
+                    <span>Total syncs: <span className="text-foreground">{d.totalSyncs}</span></span>
+                    <span>Success rate: <span className={d.successRate >= 90 ? "text-success" : d.successRate >= 70 ? "text-warning" : "text-destructive"}>{d.successRate}%</span></span>
+                  </div>
+                  {d.recentErrors.length > 0 && (
+                    <div className="rounded-md bg-destructive/5 border border-destructive/15 p-2 space-y-1">
+                      <div className="text-[10px] font-medium text-destructive">Recent errors:</div>
+                      {d.recentErrors.map((e: any, i: number) => (
+                        <div key={i} className="text-[10px] text-muted-foreground">
+                          {new Date(e.created_at).toLocaleDateString()} — {e.message || "Unknown error"}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Not Connected */}
+      {notConnected.length > 0 && (
+        <div className="glass-card rounded-xl p-5 space-y-3">
+          <h3 className="text-sm font-semibold text-muted-foreground">Not Connected</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {notConnected.map(d => (
+              <div key={d.id} className="flex items-center gap-3 rounded-lg bg-secondary/30 border border-border p-3">
+                <span className="h-2 w-2 rounded-full bg-muted-foreground/30 shrink-0" />
+                <span className="text-sm text-muted-foreground truncate">{d.name}</span>
+                <span className="ml-auto text-[10px] text-muted-foreground/60">No SFTP</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="text-center">
+        <button onClick={loadSFTP} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+        </button>
+      </div>
     </div>
   );
 }
