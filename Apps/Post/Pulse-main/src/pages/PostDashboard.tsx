@@ -262,13 +262,17 @@ const Index = () => {
               )}
             </div>
 
-            <button onClick={handleDMSSync} disabled={syncing} className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors disabled:opacity-50">
-              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              {syncing ? "Syncing..." : "Sync DMS"}
-            </button>
-            <button onClick={() => setShowDMSLog(true)} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <Database className="h-3.5 w-3.5" /> Feed Log
-            </button>
+            {isAdmin && (
+              <>
+                <button onClick={handleDMSSync} disabled={syncing} className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors disabled:opacity-50">
+                  {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {syncing ? "Syncing..." : "Sync DMS"}
+                </button>
+                <button onClick={() => setShowDMSLog(true)} className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <Database className="h-3.5 w-3.5" /> Feed Log
+                </button>
+              </>
+            )}
             {isDealerAdmin && (
               <button
                 onClick={() => navigate("/admin")}

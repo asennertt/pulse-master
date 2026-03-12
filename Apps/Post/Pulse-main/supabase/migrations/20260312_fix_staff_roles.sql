@@ -1,16 +1,30 @@
 -- =============================================================================
--- Function: accept_invite
--- Schema:   public
--- Purpose:  Accepts a dealership invite token — links the calling user to the
---           dealership and marks the token as used.
---
--- Usage (JS):
---   const { data, error } = await supabase.rpc("accept_invite", {
---     _token: "abc-123-def"
---   });
---   // data => { dealership_name: "Lotly Motors" }  or  { error: "..." }
+-- Migration: Fix staff role assignment
+-- Date: 2026-03-12
+-- 
+-- WHAT THIS FIXES:
+-- 1. The signup trigger was giving dealer_admin to EVERY new user (including staff)
+-- 2. The accept_invite function now removes dealer_admin for invited staff
+-- 3. Cleans up the test staff user who got dealer_admin incorrectly
 -- =============================================================================
 
+-- ─── 1. Fix the signup trigger: only assign dealer_user ───────────────────────
+-- dealer_admin is assigned by setup_dealership() during onboarding, not on signup.
+CREATE OR REPLACE FUNCTION public.handle_new_user_role()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (NEW.id, 'dealer_user')
+  ON CONFLICT (user_id, role) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+-- ─── 2. Update accept_invite: ensure staff never get dealer_admin ─────────────
 CREATE OR REPLACE FUNCTION public.accept_invite(
     _token TEXT
 )
@@ -24,13 +38,11 @@ DECLARE
     v_caller_id    UUID;
     v_dealership   RECORD;
 BEGIN
-    -- Get the authenticated caller
     v_caller_id := auth.uid();
     IF v_caller_id IS NULL THEN
         RETURN jsonb_build_object('error', 'Not authenticated');
     END IF;
 
-    -- Look up the invite
     SELECT *
     INTO v_invite
     FROM public.invitation_links
@@ -41,17 +53,14 @@ BEGIN
         RETURN jsonb_build_object('error', 'Invite token not found');
     END IF;
 
-    -- Check if already used
     IF v_invite.used_at IS NOT NULL THEN
         RETURN jsonb_build_object('error', 'This invite has already been used');
     END IF;
 
-    -- Check expiry
     IF v_invite.expires_at < NOW() THEN
         RETURN jsonb_build_object('error', 'This invite has expired');
     END IF;
 
-    -- Look up the dealership
     SELECT id, name
     INTO v_dealership
     FROM public.dealerships
@@ -66,7 +75,7 @@ BEGIN
         updated_at      = NOW()
     WHERE user_id = v_caller_id;
 
-    -- Grant dealer_user role if not already present
+    -- Grant dealer_user role
     INSERT INTO public.user_roles (user_id, role)
     VALUES (v_caller_id, 'dealer_user')
     ON CONFLICT DO NOTHING;
@@ -99,6 +108,7 @@ $$;
 REVOKE ALL ON FUNCTION public.accept_invite(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.accept_invite(TEXT) TO authenticated;
 
-COMMENT ON FUNCTION public.accept_invite(TEXT) IS
-    'Accepts a dealership invitation token, linking the caller to the '
-    'dealership and marking the token as used.';
+-- ─── 3. Clean up test staff user: remove incorrectly assigned dealer_admin ────
+DELETE FROM public.user_roles
+WHERE user_id = 'af329275-9dc8-4152-be69-ddf30a33fe41'
+  AND role = 'dealer_admin';

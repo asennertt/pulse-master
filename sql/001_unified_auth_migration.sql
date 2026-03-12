@@ -39,8 +39,9 @@ CREATE POLICY "Service role can manage roles"
   FOR ALL
   USING (auth.role() = 'service_role');
 
--- 3. Function: auto-assign dealer_admin + dealer_user on sign-up
---    Every new signup is a dealership owner until they assign staff.
+-- 3. Function: auto-assign dealer_user on sign-up
+--    dealer_admin is assigned later by setup_dealership() during onboarding.
+--    Invited staff only get dealer_user (accept_invite ensures no dealer_admin).
 CREATE OR REPLACE FUNCTION public.handle_new_user_role()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -48,12 +49,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Assign dealer_admin (owner of their dealership)
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'dealer_admin')
-  ON CONFLICT (user_id, role) DO NOTHING;
-
-  -- Assign dealer_user (general authenticated user role)
+  -- Only assign dealer_user on signup.
+  -- dealer_admin is assigned by setup_dealership() during onboarding.
   INSERT INTO public.user_roles (user_id, role)
   VALUES (NEW.id, 'dealer_user')
   ON CONFLICT (user_id, role) DO NOTHING;
