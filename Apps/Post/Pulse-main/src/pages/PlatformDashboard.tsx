@@ -11,7 +11,7 @@ import {
   Link2, LogOut, Users, Loader2, Facebook, KeyRound, RefreshCw,
   Power, FileText, FolderSync, LayoutDashboard, Settings,
   BarChart3, Bell, Globe, Database, DollarSign, ExternalLink,
-  AlertTriangle, ArrowUpRight, Ban,
+  AlertTriangle, ArrowUpRight, Ban, BookOpen, CircleDot,
 } from "lucide-react";
 import pulseLogo from "@/assets/pulse-logo.png";
 
@@ -48,7 +48,7 @@ interface UsageSummary {
   action_counts: Record<string, number>;
 }
 
-type PlatformTab = "overview" | "dealers" | "activation" | "usage" | "billing" | "health" | "audit" | "settings";
+type PlatformTab = "overview" | "dealers" | "activation" | "usage" | "billing" | "health" | "audit" | "settings" | "onboarding";
 
 // ────────────────── Main Page ──────────────────
 export default function PlatformDashboard() {
@@ -81,6 +81,7 @@ export default function PlatformDashboard() {
   const navItems: { key: PlatformTab; label: string; icon: React.ElementType; section?: string }[] = [
     { key: "overview", label: "Overview", icon: LayoutDashboard, section: "Dashboard" },
     { key: "dealers", label: "Dealers", icon: Building2, section: "Management" },
+    { key: "onboarding", label: "Onboarding Guide", icon: BookOpen },
     { key: "activation", label: "Verification", icon: Clock },
     { key: "usage", label: "Usage", icon: BarChart3 },
     { key: "billing", label: "Billing", icon: CreditCard, section: "Finance" },
@@ -174,6 +175,7 @@ export default function PlatformDashboard() {
         <div className="p-6 max-w-[1400px]">
           {tab === "overview" && <PlatformOverview onNavigate={setTab} />}
           {tab === "dealers" && <DealerOverview onImpersonate={handleImpersonate} />}
+          {tab === "onboarding" && <OnboardingGuide onNavigate={setTab} />}
           {tab === "activation" && <VerificationQueue />}
           {tab === "usage" && <APIUsageMonitor />}
           {tab === "billing" && <BillingOverview />}
@@ -331,6 +333,160 @@ interface FeedHealth {
   new_vehicles: number;
   status: string;
   source: string;
+}
+
+// ────────────────── Onboarding Guide ──────────────────
+function OnboardingGuide({ onNavigate }: { onNavigate: (tab: PlatformTab) => void }) {
+  const steps = [
+    {
+      number: 1,
+      title: "Generate an Invitation Link",
+      description: "Go to the Dealers tab and click \"Generate Invitation Link\". Send this link to the dealership owner. When they click it, they'll create their account and a new dealership will be auto-provisioned.",
+      action: "Go to Dealers",
+      onAction: () => onNavigate("dealers"),
+      icon: Link2,
+      detail: "The invitation link expires in 7 days. The dealer will be placed in \"pending\" status until you verify them.",
+    },
+    {
+      number: 2,
+      title: "Verify the Dealership",
+      description: "Once the dealer signs up, they'll appear in the Verification Queue. Review their details and click \"Verify\" to approve them. This activates their account and marks their API credentials as approved.",
+      action: "Go to Verification",
+      onAction: () => onNavigate("activation"),
+      icon: CheckCircle2,
+      detail: "Verification also sets their profile's onboarding_complete flag, unlocking the full dashboard.",
+    },
+    {
+      number: 3,
+      title: "Generate SFTP Credentials",
+      description: "In the Dealers tab, find the new dealer and click \"Generate\" in the Credentials column. This creates an SFTP user on SFTPCloud and saves the username to the dealership record.",
+      action: "Go to Dealers",
+      onAction: () => onNavigate("dealers"),
+      icon: KeyRound,
+      detail: "A modal will display the credentials ONE TIME. Copy the host, port, username, and password. You'll need to share these with the dealer's DMS provider.",
+    },
+    {
+      number: 4,
+      title: "Set Up the SFTPCloud Webhook (One-Time)",
+      description: "If this is your first dealer, set up the webhook in SFTPCloud so inventory feeds are processed automatically in real-time.",
+      icon: Bell,
+      detail: `Steps in SFTPCloud:\n\n1. Log into sftpcloud.io\n2. Open your SFTP instance\n3. Go to Event Listeners → Create\n4. Event: Upload\n5. Action: Webhook\n6. Endpoint URL:\n   https://jfyfbjybbbsiovihrpal.supabase.co/functions/v1/sftp-poll\n7. (Optional) Add a filter: Path → Ends with → .csv\n\nThis only needs to be done once. It covers ALL dealer users on the instance.`,
+    },
+    {
+      number: 5,
+      title: "Share Credentials with the DMS Provider",
+      description: "Send the SFTP credentials to the dealer so they can give them to their DMS company (DealerSocket, CDK, Reynolds, etc). The DMS will configure their system to push the inventory feed to this SFTP location.",
+      icon: FolderSync,
+      detail: "What to share with the DMS provider:\n\n• SFTP Host: (from the credential modal)\n• Port: 22\n• Username: (from the credential modal)\n• Password: (from the credential modal)\n• File format: CSV preferred\n• Schedule: Daily push (most DMS systems default to every 24 hours)\n\nThe DMS company uploads the feed → SFTPCloud webhook fires → Pulse auto-ingests the inventory.",
+    },
+    {
+      number: 6,
+      title: "Monitor the Feed",
+      description: "Once the DMS starts pushing files, check the Feed column in the Dealers tab. A green \"Active\" status means everything is working. The feed will auto-update every 24 hours.",
+      action: "Go to Dealers",
+      onAction: () => onNavigate("dealers"),
+      icon: Activity,
+      detail: "Feed status indicators:\n\n• 🟢 Active — Last sync within 26 hours\n• 🟡 Delayed — Last sync 26-72 hours ago\n• 🔴 Stale — No sync for 72+ hours (contact the DMS)\n\nA daily backup cron runs at 2:00 AM ET to catch any missed webhooks.",
+    },
+  ];
+
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-primary" /> New Dealer Onboarding Guide
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">Follow these steps to set up a new dealership on Pulse Post.</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {steps.map((step, idx) => {
+          const isExpanded = expandedStep === idx;
+          const Icon = step.icon;
+          return (
+            <div key={idx} className="glass-card rounded-lg overflow-hidden">
+              <button
+                onClick={() => setExpandedStep(isExpanded ? null : idx)}
+                className="w-full flex items-center gap-4 p-4 text-left hover:bg-secondary/30 transition-colors"
+              >
+                <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-bold text-primary">{step.number}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 text-primary shrink-0" />
+                    <h3 className="text-sm font-semibold text-foreground">{step.title}</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+              </button>
+
+              {isExpanded && (
+                <div className="px-4 pb-4 pt-0 border-t border-border/50">
+                  <div className="ml-14 mt-3 space-y-3">
+                    <div className="rounded-lg bg-secondary/60 border border-border p-3">
+                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{step.detail}</pre>
+                    </div>
+                    {step.action && step.onAction && (
+                      <button
+                        onClick={step.onAction}
+                        className="flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <ArrowUpRight className="h-3.5 w-3.5" /> {step.action}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Quick Reference Card */}
+      <div className="glass-card rounded-lg p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Zap className="h-4 w-4 text-warning" /> Quick Reference
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg bg-secondary/60 border border-border p-3 space-y-2">
+            <h4 className="text-xs font-semibold text-foreground">SFTPCloud Webhook URL</h4>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-[11px] font-mono text-primary bg-background/50 rounded px-2 py-1.5 break-all">
+                https://jfyfbjybbbsiovihrpal.supabase.co/functions/v1/sftp-poll
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText("https://jfyfbjybbbsiovihrpal.supabase.co/functions/v1/sftp-poll");
+                  toast.success("Webhook URL copied!");
+                }}
+                className="shrink-0 rounded-md bg-secondary border border-border p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <div className="rounded-lg bg-secondary/60 border border-border p-3 space-y-2">
+            <h4 className="text-xs font-semibold text-foreground">Daily Cron Backup</h4>
+            <p className="text-[11px] text-muted-foreground">Runs at <span className="font-mono text-foreground">6:00 AM UTC</span> (2:00 AM ET) — polls all dealers with SFTP credentials as a safety net behind the webhook.</p>
+          </div>
+          <div className="rounded-lg bg-secondary/60 border border-border p-3 space-y-2">
+            <h4 className="text-xs font-semibold text-foreground">Supported Feed Formats</h4>
+            <p className="text-[11px] text-muted-foreground">CSV, TSV, TXT, XML — auto-detected. The system maps columns like <span className="font-mono text-foreground">Sale_Price</span>, <span className="font-mono text-foreground">Internet_Price</span>, <span className="font-mono text-foreground">Asking_Price</span> etc. to the price field (MSRP is ignored).</p>
+          </div>
+          <div className="rounded-lg bg-secondary/60 border border-border p-3 space-y-2">
+            <h4 className="text-xs font-semibold text-foreground">Auto-Mapped Fields</h4>
+            <p className="text-[11px] text-muted-foreground">VIN, Make, Model, Year, Price, Mileage, Exterior Color, Images, Days on Lot, Trim. Custom mappings can be added via the <span className="font-mono text-foreground">dms_field_mappings</span> table.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DealerOverview({ onImpersonate }: { onImpersonate: (d: Dealership) => void }) {
