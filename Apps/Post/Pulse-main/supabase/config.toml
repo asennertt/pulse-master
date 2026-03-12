@@ -18,6 +18,9 @@ verify_jwt = false
 [functions.dms-ingest]
 verify_jwt = false
 
+[functions.sftp-poll]
+verify_jwt = false
+
 [functions.check-fb-tokens]
 verify_jwt = false
 
