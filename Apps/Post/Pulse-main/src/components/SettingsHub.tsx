@@ -53,21 +53,23 @@ const defaultSettings: DealerSettings = {
 };
 
 export function SettingsHub() {
+  const { activeDealerId } = useAuth();
   const [tab, setTab] = useState<SettingsTab>("profile");
   const [settings, setSettings] = useState<DealerSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (activeDealerId) loadSettings();
+  }, [activeDealerId]);
 
   const loadSettings = async () => {
     const { data } = await supabase
       .from("dealer_settings")
       .select("*")
+      .eq("dealership_id", activeDealerId)
       .limit(1)
-      .single();
+      .maybeSingle();
     if (data) setSettings(data as unknown as DealerSettings);
     setLoading(false);
   };
@@ -75,20 +77,36 @@ export function SettingsHub() {
   const saveSettings = async (partial?: Partial<DealerSettings>) => {
     setSaving(true);
     const toSave = partial ? { ...settings, ...partial } : settings;
-    const { error } = await supabase
-      .from("dealer_settings")
-      .update({
-        dealership_name: toSave.dealership_name,
-        dba: toSave.dba,
-        primary_phone: toSave.primary_phone,
-        address: toSave.address,
-        website_url: toSave.website_url,
-        logo_url: toSave.logo_url,
-        brand_color: toSave.brand_color,
-        global_system_prompt: toSave.global_system_prompt,
-        auto_blur_plates: toSave.auto_blur_plates,
-      })
-      .eq("id", settings.id);
+    const payload = {
+      dealership_id: activeDealerId,
+      dealership_name: toSave.dealership_name,
+      dba: toSave.dba,
+      primary_phone: toSave.primary_phone,
+      address: toSave.address,
+      website_url: toSave.website_url,
+      logo_url: toSave.logo_url,
+      brand_color: toSave.brand_color,
+      global_system_prompt: toSave.global_system_prompt,
+      auto_blur_plates: toSave.auto_blur_plates,
+    };
+
+    let error;
+    if (settings.id) {
+      // Existing row — update
+      ({ error } = await supabase
+        .from("dealer_settings")
+        .update(payload)
+        .eq("id", settings.id));
+    } else {
+      // No row yet — insert
+      const { data: newRow, error: insertErr } = await supabase
+        .from("dealer_settings")
+        .insert(payload)
+        .select()
+        .single();
+      error = insertErr;
+      if (newRow) setSettings(prev => ({ ...prev, ...newRow } as DealerSettings));
+    }
     setSaving(false);
     if (error) {
       toast.error("Failed to save settings");
@@ -163,6 +181,96 @@ export function SettingsHub() {
 // ── Shared input style ────────────────────────────────
 const inputCls = "w-full rounded-md bg-secondary border border-border px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors";
 
+// ── Logo Uploader (Cloudinary) ──────────────────────
+function LogoUploader({ logoUrl, onUploaded }: { logoUrl: string; onUploaded: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(logoUrl || null);
+  const fileRef = useState<HTMLInputElement | null>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show local preview immediately
+    const localUrl = URL.createObjectURL(file);
+    setPreview(localUrl);
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "PulsePost");
+      formData.append("folder", "pulse-logos");
+
+      const res = await fetch("https://api.cloudinary.com/v1_1/dbfhx3and/image/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      const url = data.secure_url;
+      setPreview(url);
+      onUploaded(url);
+      toast.success("Logo uploaded successfully");
+    } catch (err: any) {
+      toast.error("Logo upload failed", { description: err.message });
+      setPreview(logoUrl || null);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = () => {
+    setPreview(null);
+    onUploaded("");
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Dealership Logo</label>
+      <div className="flex items-center gap-3">
+        {preview ? (
+          <div className="h-16 w-16 rounded-lg border border-border overflow-hidden bg-secondary flex items-center justify-center relative group">
+            <img src={preview} alt="Logo" className="h-full w-full object-contain" />
+            {uploading && (
+              <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
+                <Loader2 className="h-4 w-4 text-primary animate-spin" />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="h-16 w-16 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-secondary/50">
+            <Upload className="h-5 w-5 text-muted-foreground" />
+          </div>
+        )}
+        <div className="flex-1 space-y-2">
+          <label className="flex items-center gap-2 rounded-md bg-primary/10 border border-primary/20 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer w-fit">
+            <Upload className="h-3.5 w-3.5" />
+            {uploading ? "Uploading..." : preview ? "Change Logo" : "Upload Logo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              onChange={handleFileChange}
+              className="hidden"
+              disabled={uploading}
+            />
+          </label>
+          {preview && (
+            <button
+              onClick={handleRemove}
+              className="flex items-center gap-1 text-[10px] text-destructive hover:text-destructive/80 transition-colors"
+            >
+              <Trash2 className="h-3 w-3" /> Remove logo
+            </button>
+          )}
+          <p className="text-[10px] text-muted-foreground">PNG, JPG, SVG, or WebP. Displayed in the inventory header.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 1. Dealership Profile ──────────────────────────────
 function DealershipProfile({
   settings,
@@ -233,29 +341,7 @@ function DealershipProfile({
           <Palette className="h-4 w-4 text-primary" /> Branding
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Dealership Logo</label>
-            <div className="flex items-center gap-3">
-              {settings.logo_url ? (
-                <div className="h-16 w-16 rounded-lg border border-border overflow-hidden bg-secondary flex items-center justify-center">
-                  <img src={settings.logo_url} alt="Logo" className="h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div className="h-16 w-16 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-secondary/50">
-                  <Upload className="h-5 w-5 text-muted-foreground" />
-                </div>
-              )}
-              <div className="flex-1">
-                <input
-                  value={settings.logo_url}
-                  onChange={e => updateField("logo_url", e.target.value)}
-                  placeholder="https://example.com/logo.png"
-                  className={inputCls}
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">Enter a URL to your logo image. Used on AI-generated overlays.</p>
-              </div>
-            </div>
-          </div>
+          <LogoUploader logoUrl={settings.logo_url} onUploaded={(url) => updateField("logo_url", url)} />
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Primary Brand Color</label>
             <div className="flex items-center gap-3">

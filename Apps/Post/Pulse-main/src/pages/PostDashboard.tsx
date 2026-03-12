@@ -35,7 +35,7 @@ interface UserPosting {
 
 const Index = () => {
   const navigate = useNavigate();
-  const { isSuperAdmin, isDealerAdmin, signOut, impersonatingDealerId, setImpersonatingDealerId, profile, user } = useAuth();
+  const { isSuperAdmin, isDealerAdmin, signOut, impersonatingDealerId, setImpersonatingDealerId, profile, user, activeDealerId } = useAuth();
   const isAdmin = isSuperAdmin || isDealerAdmin;
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +49,17 @@ const Index = () => {
   const [showDMSLog, setShowDMSLog] = useState(false);
   const [marketplaceVehicle, setMarketplaceVehicle] = useState<Vehicle | null>(null);
   const [userPostings, setUserPostings] = useState<Map<string, string>>(new Map());
+  const [dealerLogo, setDealerLogo] = useState<string | null>(null);
+
+  // Load dealership logo from settings
+  useEffect(() => {
+    if (!activeDealerId) return;
+    const loadLogo = async () => {
+      const { data } = await supabase.from("dealer_settings").select("logo_url").eq("dealership_id", activeDealerId).limit(1).maybeSingle();
+      if (data?.logo_url) setDealerLogo(data.logo_url as string);
+    };
+    loadLogo();
+  }, [activeDealerId]);
 
   
 
@@ -225,6 +236,10 @@ const Index = () => {
       <header className={`border-b border-border glass sticky top-0 z-40 transition-transform duration-300 ${headerVisible ? "translate-y-0" : "-translate-y-full"}`}>
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-6 py-2">
           <div className="flex items-center gap-3">
+            {dealerLogo && (
+              <img src={dealerLogo} alt="Dealership" className="h-10 w-auto object-contain max-w-[120px]" />
+            )}
+            <div className="h-6 w-px bg-border" style={{ display: dealerLogo ? undefined : "none" }} />
             <img src={pulseLogo} alt="Pulse Posting" className="h-14 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-3">
