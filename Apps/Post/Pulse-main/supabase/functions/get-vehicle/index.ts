@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
 
     const { data: vehicle, error } = await supabase
       .from("vehicles")
-      .select("price, mileage, make, model, year, trim, exterior_color, images, vin, ai_description")
+      .select("price, mileage, make, model, year, trim, exterior_color, images, vin, ai_description, dealership_id")
       .eq("vin", vin)
       .maybeSingle();
 
@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
       exterior_color: vehicle.exterior_color || "",
       vin: vehicle.vin,
       images: imageUrls,
+      dealer_id: vehicle.dealership_id || null,
     });
   } catch (e) {
     console.error("get-vehicle error:", e);

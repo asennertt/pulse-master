@@ -11,15 +11,31 @@ serve(async (req) => {
   try {
     const { vehicle, tone, dealer_id } = await req.json();
 
+    // ── Supabase client for DB lookups ──
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
     // ── Kill Switch: check dealer status ──
     if (dealer_id) {
-      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       const { data: dealerCheck } = await sb.from("dealerships").select("status").eq("id", dealer_id).single();
       if (dealerCheck && dealerCheck.status !== "active") {
         return new Response(JSON.stringify({ error: "Account is inactive. AI generation disabled by admin." }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+    }
+
+    // ── Fetch dealer AI customization (global_system_prompt) ──
+    let dealerCustomPrompt = "";
+    if (dealer_id) {
+      const { data: settings } = await sb
+        .from("dealer_settings")
+        .select("global_system_prompt")
+        .eq("dealership_id", dealer_id)
+        .limit(1)
+        .maybeSingle();
+      if (settings?.global_system_prompt) {
+        dealerCustomPrompt = settings.global_system_prompt;
       }
     }
 
@@ -65,7 +81,7 @@ Rules:
 - Include the vehicle specs naturally
 - Do NOT include the price (dealer adds separately)
 - Format for Facebook Marketplace readability with line breaks
-- Make every word count for conversion`;
+- Make every word count for conversion${dealerCustomPrompt ? `\n\nDEALERSHIP-SPECIFIC INSTRUCTIONS (always follow these):\n${dealerCustomPrompt}` : ""}`;
 
     const userPrompt = `Generate a Facebook Marketplace listing for:
 Year: ${vehicle.year}

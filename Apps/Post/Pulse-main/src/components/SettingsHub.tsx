@@ -52,9 +52,9 @@ const defaultSettings: DealerSettings = {
   auto_blur_plates: false,
 };
 
-export function SettingsHub() {
+export function SettingsHub({ staffOnly = false }: { staffOnly?: boolean }) {
   const { activeDealerId } = useAuth();
-  const [tab, setTab] = useState<SettingsTab>("profile");
+  const [tab, setTab] = useState<SettingsTab>(staffOnly ? "ai" : "profile");
   const [settings, setSettings] = useState<DealerSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,13 +120,17 @@ export function SettingsHub() {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const tabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
+  const allTabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
     { key: "profile", label: "Dealership Profile", icon: Building2 },
     { key: "dms", label: "DMS Integration", icon: Database },
     { key: "ai", label: "AI Customization", icon: Sparkles },
     { key: "users", label: "User Management", icon: Users },
     { key: "appearance", label: "Appearance", icon: Palette },
   ];
+
+  const tabs = staffOnly
+    ? allTabs.filter(t => t.key === "ai" || t.key === "appearance")
+    : allTabs;
 
   if (loading) {
     return (

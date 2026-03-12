@@ -3,6 +3,7 @@ import { Vehicle } from "@/data/vehicles";
 import { Sparkles, Copy, Check, Loader2, Pencil, ShieldCheck, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/Contexts/AuthContext";
 
 type Tone = "professional" | "aggressive" | "emoji";
 
@@ -24,6 +25,7 @@ const toneLabels: Record<Tone, { label: string; desc: string }> = {
 };
 
 export function GeneratePostPanel({ vehicle, onClose }: GeneratePostPanelProps) {
+  const { activeDealerId } = useAuth();
   const [tone, setTone] = useState<Tone>("professional");
   const [description, setDescription] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -39,7 +41,7 @@ export function GeneratePostPanel({ vehicle, onClose }: GeneratePostPanelProps) 
     setCompliance(null);
     try {
       const { data, error } = await supabase.functions.invoke("generate-post", {
-        body: { vehicle, tone },
+        body: { vehicle, tone, dealer_id: activeDealerId },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

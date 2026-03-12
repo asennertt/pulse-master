@@ -25,7 +25,7 @@ import { useRef } from "react";
 import pulseLogo from "@/assets/pulse-logo.png";
 import { Input } from "@/components/ui/input";
 
-type Tab = "inventory" | "leads" | "staff" | "ingestion" | "settings";
+type Tab = "inventory" | "leads" | "staff" | "ingestion" | "settings" | "ai-settings";
 
 // Track which vehicles the current user has posted
 interface UserPosting {
@@ -260,6 +260,11 @@ const Index = () => {
                   </button>
                 </>
               )}
+              {!isAdmin && (
+                <button onClick={() => setActiveTab("ai-settings")} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === "ai-settings" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  <Settings className="h-3.5 w-3.5" /> AI Settings
+                </button>
+              )}
             </div>
 
             {isAdmin && (
@@ -355,6 +360,8 @@ const Index = () => {
           <StaffDashboard />
         ) : activeTab === "ingestion" ? (
           <IngestionEngine />
+        ) : activeTab === "ai-settings" ? (
+          <SettingsHub staffOnly />
         ) : (
           <SettingsHub />
         )}
