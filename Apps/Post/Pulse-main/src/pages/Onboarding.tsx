@@ -133,6 +133,22 @@ export default function OnboardingPage() {
     if (profile?.dealership_id) {
       await supabase.from("dealerships").update({ status: "active" }).eq("id", profile.dealership_id);
     }
+
+    // Send welcome email (fire-and-forget)
+    const { data: dealership } = profile?.dealership_id
+      ? await supabase.from("dealerships").select("name").eq("id", profile.dealership_id).single()
+      : { data: null };
+    supabase.functions.invoke("send-email", {
+      body: {
+        type: "welcome",
+        to: user!.email,
+        data: {
+          name: user!.user_metadata?.full_name || user!.email?.split("@")[0] || "there",
+          dealershipName: dealership?.name || "Your Dealership",
+        },
+      },
+    }).catch(() => {}); // non-blocking
+
     setLoading(false);
     toast.success("You're all set! Welcome to Pulse Post.");
     await refreshProfile();

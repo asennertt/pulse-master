@@ -2,6 +2,24 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
+/* ── Helper: fire-and-forget email via send-email function ── */
+async function sendEmail(type: string, to: string, data: Record<string, string>) {
+  try {
+    const base = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    await fetch(`${base}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ type, to, data }),
+    });
+  } catch (e) {
+    console.log(`[STRIPE-WEBHOOK] Email send failed (non-fatal): ${e.message}`);
+  }
+}
+
 const log = (step: string, details?: any) => {
   const d = details ? ` — ${JSON.stringify(details)}` : "";
   console.log(`[STRIPE-WEBHOOK] ${step}${d}`);
@@ -93,6 +111,23 @@ serve(async (req) => {
               }).eq("id", profile.dealership_id);
 
               log("Dealership updated", { dealership_id: profile.dealership_id, productId });
+
+              // Send subscription confirmation email
+              const { data: dealershipData } = await supabase
+                .from("dealerships")
+                .select("name")
+                .eq("id", profile.dealership_id)
+                .single();
+
+              const priceAmount = subscription.items.data[0]?.price?.unit_amount;
+              const planLabel = priceAmount === 4900 ? "Starter" : priceAmount === 9900 ? "Unlimited" : "Pulse Post";
+              const amountStr = priceAmount ? `$${(priceAmount / 100).toFixed(0)}` : "$49";
+
+              await sendEmail("subscription_confirmed", customerEmail, {
+                name: matchedUser.user_metadata?.full_name || customerEmail.split("@")[0],
+                planName: planLabel,
+                amount: amountStr,
+              });
             }
           }
         }
@@ -169,6 +204,14 @@ serve(async (req) => {
           }).eq("id", dealership.id);
 
           log("Dealership marked past_due", { dealership_id: dealership.id });
+
+          // Send payment failed email
+          const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+          if (customer.email) {
+            await sendEmail("payment_failed", customer.email, {
+              name: customer.name || customer.email.split("@")[0],
+            });
+          }
         }
         break;
       }
