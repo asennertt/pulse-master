@@ -25,7 +25,7 @@ serve(async (req) => {
     // Find the vehicle
     const { data: vehicle, error: findErr } = await supabase
       .from("vehicles")
-      .select("id, vin, year, make, model, trim, posted_by_staff_id, status")
+      .select("id, vin, year, make, model, trim, posted_by_staff_id, status, dealer_id, fb_listing_url")
       .eq("vin", vin)
       .single();
 
@@ -41,11 +41,20 @@ serve(async (req) => {
       });
     }
 
-    // Mark as sold
+    // Mark as sold (sold_at is also set by DB trigger, but we set it explicitly for consistency)
     await supabase
       .from("vehicles")
-      .update({ status: "sold", synced_to_facebook: false, facebook_post_id: null })
+      .update({ status: "sold", synced_to_facebook: false, facebook_post_id: null, sold_at: new Date().toISOString() })
       .eq("id", vehicle.id);
+
+    // Record a 'removed' posting event for attribution tracking
+    await supabase.from("posting_events").insert({
+      vehicle_id: vehicle.id,
+      dealership_id: vehicle.dealer_id || null,
+      staff_id: vehicle.posted_by_staff_id || null,
+      event_type: "removed",
+      fb_listing_url: vehicle.fb_listing_url || null,
+    });
 
     // Create sold alert for the salesperson who posted it
     const vehicleLabel = `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim || ""}`.trim();

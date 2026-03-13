@@ -16,20 +16,21 @@ import { SoldAlertsBanner } from "@/components/SoldAlertsBanner";
 import { IngestionEngine } from "@/components/IngestionEngine";
 import { RenewalsBanner } from "@/components/RenewalsBanner";
 import { SettingsHub } from "@/components/SettingsHub";
+import { AttributionAnalytics } from "@/components/AttributionAnalytics";
 import { InventoryFilters, filterVehicles, defaultFilters } from "@/components/InventoryFilters";
 import type { InventoryFilterState } from "@/components/InventoryFilters";
 
 import { fetchVehicles, updateVehicleStatus, updateFacebookSync, syncInventoryFromDMS } from "@/services/vehicleService";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Database, RefreshCw, Loader2, Users, Car, UserCog, DownloadCloud, Shield, Settings, LogOut, Eye, X, Search, Sun, Moon } from "lucide-react";
+import { Database, RefreshCw, Loader2, Users, Car, UserCog, DownloadCloud, Shield, Settings, LogOut, Eye, X, Search, Sun, Moon, BarChart3 } from "lucide-react";
 import { useRef } from "react";
 import pulseLogoDark from "@/assets/pulse-logo.png";
 import pulseLogoLight from "@/assets/pulse-logo-blue.png";
 import { useTheme } from "@/Contexts/ThemeContext";
 import { Input } from "@/components/ui/input";
 
-type Tab = "inventory" | "leads" | "staff" | "ingestion" | "settings" | "ai-settings";
+type Tab = "inventory" | "leads" | "staff" | "ingestion" | "settings" | "ai-settings" | "analytics";
 
 // Track which vehicles the current user has posted
 interface UserPosting {
@@ -263,6 +264,9 @@ const Index = () => {
                   <button onClick={() => setActiveTab("ingestion")} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === "ingestion" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                     <DownloadCloud className="h-3.5 w-3.5" /> Ingestion
                   </button>
+                  <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === "analytics" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                    <BarChart3 className="h-3.5 w-3.5" /> Analytics
+                  </button>
                   <button onClick={() => setActiveTab("settings")} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === "settings" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                     <Settings className="h-3.5 w-3.5" /> Settings
                   </button>
@@ -381,6 +385,8 @@ const Index = () => {
           <StaffDashboard />
         ) : activeTab === "ingestion" ? (
           <IngestionEngine />
+        ) : activeTab === "analytics" ? (
+          <AttributionAnalytics />
         ) : activeTab === "ai-settings" ? (
           <SettingsHub staffOnly />
         ) : (

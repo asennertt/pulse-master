@@ -20,6 +20,12 @@ export interface Vehicle {
   last_price_change: string | null;
   created_at: string;
   updated_at: string;
+  first_posted_at?: string | null;
+  sold_at?: string | null;
+  days_to_sell?: number | null;
+  image_scores?: any[] | null;
+  source?: string | null;
+  source_url?: string | null;
 }
 
 // Maps DB status to display labels

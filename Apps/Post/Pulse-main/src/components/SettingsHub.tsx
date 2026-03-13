@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { DMSIntegrationWizard } from "@/components/DMSIntegrationWizard";
+import { IngestionMethodChooser } from "@/components/IngestionMethodChooser";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -122,7 +122,7 @@ export function SettingsHub({ staffOnly = false }: { staffOnly?: boolean }) {
 
   const allTabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
     { key: "profile", label: "Dealership Profile", icon: Building2 },
-    { key: "dms", label: "DMS Integration", icon: Database },
+    { key: "dms", label: "Inventory Source", icon: Database },
     { key: "ai", label: "AI Customization", icon: Sparkles },
     { key: "users", label: "User Management", icon: Users },
     { key: "appearance", label: "Appearance", icon: Palette },
@@ -174,7 +174,7 @@ export function SettingsHub({ staffOnly = false }: { staffOnly?: boolean }) {
       </div>
 
       {tab === "profile" && <DealershipProfile settings={settings} updateField={updateField} />}
-      {tab === "dms" && <DMSIntegrationWizard />}
+      {tab === "dms" && <IngestionMethodChooser />}
       {tab === "ai" && <AICustomization settings={settings} updateField={updateField} />}
       {tab === "users" && <UserManagement />}
       {tab === "appearance" && <AppearanceSettings />}

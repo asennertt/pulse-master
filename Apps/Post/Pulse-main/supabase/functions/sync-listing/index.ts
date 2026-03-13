@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       .update(updateData)
       .eq("vin", vin)
       .eq("dealer_id", profile.dealership_id)
-      .select("id, vin, make, model, year, last_posted_at")
+      .select("id, vin, make, model, year, last_posted_at, fb_listing_url")
       .single();
 
     if (error || !data) {
@@ -89,6 +89,24 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Look up the staff_id for this user at this dealership
+    const { data: staffRecord } = await supabase
+      .from("staff")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("dealership_id", profile.dealership_id)
+      .maybeSingle();
+
+    // Insert a posting event for attribution tracking
+    await supabase.from("posting_events").insert({
+      vehicle_id: data.id,
+      dealership_id: profile.dealership_id,
+      staff_id: staffRecord?.id || null,
+      user_id: userId,
+      event_type: "posted",
+      fb_listing_url: data.fb_listing_url || null,
+    });
 
     console.log(`Listing synced: ${data.year} ${data.make} ${data.model} (${vin})`);
 
