@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Database, Zap, Globe } from "lucide-react";
+import { Database, Zap, Globe, Search } from "lucide-react";
 import pulseHeroLogo from "@/assets/pulse-hero-logo.png";
 import lotlyAutoLogo from "@/assets/lotly-auto-logo.png";
 
 const nodes = [
 { label: "Your DMS", sub: "Existing dealer system", icon: Database, center: false },
+{ label: "Website Scraper", sub: "Import from your website", icon: Search, center: false },
 { label: "Pulse Platform", sub: "Central hub", icon: Zap, center: true },
 { label: "Third-Party APIs", sub: "Market data & listings", icon: Globe, center: false }];
 

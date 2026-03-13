@@ -7,14 +7,14 @@ const postSteps = [
   {
     num: "01",
     icon: LogIn,
-    title: "Connect your DMS",
-    desc: "We help you set up your DMS inventory feed. Then we pull your inventory automatically.",
+    title: "Connect your inventory",
+    desc: "Set up your DMS feed or enter your website URL — we'll pull your inventory automatically, either way.",
   },
   {
     num: "02",
     icon: BarChart3,
     title: "AI does the rest",
-    desc: "Descriptions written, images sorted, staff invited — ready to post in seconds.",
+    desc: "Descriptions written, images scored & filtered by AI, staff invited — ready to post in seconds.",
   },
   {
     num: "03",

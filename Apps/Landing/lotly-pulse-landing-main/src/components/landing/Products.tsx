@@ -13,8 +13,9 @@ const products = [
   features: [
   "Chrome extension — post to Facebook in under 60 seconds",
   "AI-powered listing descriptions that sell",
-  "DMS sync — auto-import your inventory",
-  "Smart image sorter with plate blurring",
+  "DMS sync or website scraper — choose your inventory source",
+  "AI smart image filtering — scores & sorts your best photos",
+  "Attribution tracking — see which posts drive leads & sales",
   "Sold alerts — auto-pull ads when cars leave",
   "Staff invites with role-based access",
   "Admin dashboard with posting analytics"]

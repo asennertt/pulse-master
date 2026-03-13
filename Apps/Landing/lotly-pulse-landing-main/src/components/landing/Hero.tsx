@@ -104,7 +104,7 @@ const Hero = () => {
         </h1>
 
         <p className="text-lg text-muted-foreground leading-relaxed max-w-[560px] mx-auto mb-9">
-          Post your entire lot to Facebook Marketplace in minutes — with AI descriptions, smart image sorting, and automatic DMS sync.
+          Post your entire lot to Facebook Marketplace in minutes — with AI descriptions, smart image filtering, website scraper, and automatic DMS sync.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12 flex-wrap">
