@@ -23,9 +23,9 @@ const Navbar = () => {
       }`}
       style={{ background: "hsl(var(--background) / 0.85)" }}
     >
-      <div className="flex items-center flex-shrink-0">
-        <img src={logoTransparent} alt="Pulse" className="h-8" />
-      </div>
+      <a href="https://lotlyauto.com" className="flex items-center flex-shrink-0">
+        <img src={logoTransparent} alt="Lotly Auto" className="h-8" />
+      </a>
 
       <ul className="hidden md:flex gap-1 list-none flex-1">
         {navLinks.map((item) => (
