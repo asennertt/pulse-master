@@ -1450,8 +1450,32 @@ function BillingOverview() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "past_due" | "canceled" | "none">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
 
   useEffect(() => { loadBilling(); }, []);
+
+  const handleCancelSubscription = async (subscriptionId: string, action: "cancel" | "reactivate") => {
+    const label = action === "cancel" ? "cancel" : "reactivate";
+    if (!confirm(`Are you sure you want to ${label} this subscription?`)) return;
+    setCancellingSubId(subscriptionId);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("admin-cancel-subscription", {
+        body: { subscriptionId, action },
+      });
+      if (fnError) throw new Error(fnError.message);
+      if (data?.error) throw new Error(data.error);
+      toast.success(
+        action === "cancel"
+          ? "Subscription will cancel at end of billing period"
+          : "Subscription reactivated"
+      );
+      await loadBilling();
+    } catch (err: any) {
+      toast.error(`Failed to ${label} subscription`, { description: err.message });
+    } finally {
+      setCancellingSubId(null);
+    }
+  };
 
   const loadBilling = async () => {
     setLoading(true);
@@ -1701,14 +1725,36 @@ function BillingOverview() {
                                   </span>
                                 )}
                               </div>
-                              <a
-                                href={`https://dashboard.stripe.com/subscriptions/${sub.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
-                              >
-                                View in Stripe <ArrowUpRight className="h-3 w-3" />
-                              </a>
+                              <div className="flex items-center gap-2">
+                                {(sub.status === "active" || sub.status === "trialing") && !sub.cancel_at_period_end && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCancelSubscription(sub.id, "cancel"); }}
+                                    disabled={cancellingSubId === sub.id}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                                  >
+                                    {cancellingSubId === sub.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+                                    Cancel at Period End
+                                  </button>
+                                )}
+                                {sub.cancel_at_period_end && (sub.status === "active" || sub.status === "trialing") && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCancelSubscription(sub.id, "reactivate"); }}
+                                    disabled={cancellingSubId === sub.id}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20 hover:bg-success/20 transition-colors disabled:opacity-50"
+                                  >
+                                    {cancellingSubId === sub.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                                    Reactivate
+                                  </button>
+                                )}
+                                <a
+                                  href={`https://dashboard.stripe.com/subscriptions/${sub.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                                >
+                                  View in Stripe <ArrowUpRight className="h-3 w-3" />
+                                </a>
+                              </div>
                             </div>
                             <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
                               {sub.items.map((item, idx) => (
