@@ -933,8 +933,8 @@ function RevenueOverview() {
   const summary = data?.summary;
   const customers = data?.customers || [];
   const activeSubs = customers.filter((c: any) => c.subscriptions?.some((s: any) => s.status === "active" || s.status === "trialing"));
-  const starterCount = activeSubs.filter((c: any) => c.monthly_amount_cents <= 4900).length;
-  const unlimitedCount = activeSubs.filter((c: any) => c.monthly_amount_cents > 4900).length;
+  const starterCount = activeSubs.filter((c: any) => c.monthly_amount_cents <= 9900).length;
+  const unlimitedCount = activeSubs.filter((c: any) => c.monthly_amount_cents > 9900).length;
 
   return (
     <div className="space-y-6">
@@ -978,7 +978,7 @@ function RevenueOverview() {
             </div>
             <div>
               <div className="text-2xl font-bold text-foreground">{starterCount}</div>
-              <div className="text-xs text-muted-foreground">Starter ($49/mo)</div>
+              <div className="text-xs text-muted-foreground">Starter ($99/mo)</div>
             </div>
           </div>
         </div>
@@ -989,7 +989,7 @@ function RevenueOverview() {
             </div>
             <div>
               <div className="text-2xl font-bold text-foreground">{unlimitedCount}</div>
-              <div className="text-xs text-muted-foreground">Unlimited ($99/mo)</div>
+              <div className="text-xs text-muted-foreground">Unlimited ($199/mo)</div>
             </div>
           </div>
         </div>
@@ -1014,9 +1014,9 @@ function RevenueOverview() {
                   <div className="text-[10px] text-muted-foreground">/month</div>
                 </div>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  c.monthly_amount_cents > 4900 ? "bg-success/15 text-success border border-success/25" : "bg-primary/15 text-primary border border-primary/25"
+                  c.monthly_amount_cents > 9900 ? "bg-success/15 text-success border border-success/25" : "bg-primary/15 text-primary border border-primary/25"
                 }`}>
-                  {c.monthly_amount_cents > 4900 ? "Unlimited" : "Starter"}
+                  {c.monthly_amount_cents > 9900 ? "Unlimited" : "Starter"}
                 </span>
               </div>
             ))}

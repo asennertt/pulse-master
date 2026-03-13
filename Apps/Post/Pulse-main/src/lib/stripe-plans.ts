@@ -1,15 +1,15 @@
 export const PLANS = {
   starter: {
-    price_id: "price_1T2msKPIAAotI3my8MbDMMt1",
-    product_id: "prod_U0oVFcQjuj5YPn",
+    price_id: "price_1TAbPcIbUZnqOMdHgmabYat7",
+    product_id: "prod_U8tB6bDTynDkVe",
     name: "Starter",
-    price: 49,
+    price: 99,
   },
   unlimited: {
-    price_id: "price_1T2msXPIAAotI3myE8UPo24T",
-    product_id: "prod_U0oVr4CspqqrI1",
+    price_id: "price_1TAbPgIbUZnqOMdH9aeZFj3L",
+    product_id: "prod_U8tBqEk62Baag0",
     name: "Unlimited",
-    price: 99,
+    price: 199,
   },
 } as const;
 

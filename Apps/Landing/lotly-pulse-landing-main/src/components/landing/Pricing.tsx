@@ -24,14 +24,14 @@ const postPlans: Plan[] = [
   {
     featured: false, pill: "Starter", title: "Starter",
     desc: "Perfect for the independent lot.",
-    price: "49", per: "/mo", includes: "Up to 30 posts per month",
+    price: "99", per: "/mo", includes: "Up to 30 posts per month",
     features: ["Up to 30 Posts/mo", "AI Description Generator", "AI Smart Image Filtering", "DMS Sync or Website Scraper", "Attribution Tracking", "Staff Invites (up to 3)", "Email Support"],
     cta: "Start Starter Trial", note: "7-day free trial included",
   },
   {
     featured: true, pill: "Most Popular", title: "Unlimited",
     desc: "For high-volume dealerships.",
-    price: "99", per: "/mo", includes: "Unlimited posts, unlimited staff",
+    price: "199", per: "/mo", includes: "Unlimited posts, unlimited staff",
     features: ["Unlimited Posts", "Everything in Starter", "Unlimited Staff Invites", "Role-Based Access Control", "Admin Performance Dashboard", "Advanced Attribution Analytics", "Priority Support"],
     cta: "Go Unlimited", note: "Most popular choice",
   },

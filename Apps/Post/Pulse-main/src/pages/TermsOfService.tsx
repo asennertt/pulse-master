@@ -51,7 +51,7 @@ export default function TermsOfService() {
 
           <h2>4. Subscription Plans & Payment</h2>
           <h3>4.1 Plans</h3>
-          <p>We offer subscription plans including Starter ($49/month) and Unlimited ($99/month). Plan features, pricing, and limits are subject to change with 30 days' notice. All plans include a 7-day free trial period.</p>
+          <p>We offer subscription plans including Starter ($99/month) and Unlimited ($199/month). Plan features, pricing, and limits are subject to change with 30 days' notice. All plans include a 7-day free trial period.</p>
           <h3>4.2 Billing</h3>
           <p>Subscription fees are billed monthly in advance. Payment is processed through our third-party payment processor. You authorize us to charge your designated payment method on a recurring basis. All fees are non-refundable except as required by applicable law or as stated in our refund policy.</p>
           <h3>4.3 Cancellation</h3>
