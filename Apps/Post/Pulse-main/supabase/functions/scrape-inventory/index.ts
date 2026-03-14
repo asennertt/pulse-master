@@ -6,163 +6,166 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
 };
 
-const MAX_VEHICLES = 200;
-const FETCH_TIMEOUT_MS = 55000;
+const MAX_VEHICLES = 500;
+const MAX_PAGES = 10;
+const FETCH_TIMEOUT_MS = 30000;
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.5",
+};
+
+// ── Pagination detection ─────────────────────────────────
+interface PaginationInfo {
+  totalPages: number;
+  currentPage: number;
+  nextPageUrls: string[];
+}
+
+function detectPagination(html: string, baseUrl: string): PaginationInfo {
+  const result: PaginationInfo = { totalPages: 1, currentPage: 1, nextPageUrls: [] };
+  const parsed = new URL(baseUrl);
+
+  // Pattern 1: "Page X of Y" text (CarsForSale.com and many others)
+  const pageOfMatch = html.match(/Page\s+(\d+)\s+of\s+(\d+)/i);
+  if (pageOfMatch) {
+    result.currentPage = parseInt(pageOfMatch[1]);
+    result.totalPages = Math.min(parseInt(pageOfMatch[2]), MAX_PAGES);
   }
 
-  try {
-    // ── Auth ──────────────────────────────────────────────
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Service-role client for DB operations
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
-    // Validate the user's token
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Resolve dealership
-    const userId = userData.user.id;
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("dealership_id")
-      .eq("user_id", userId)
-      .single();
-
-    if (!profile?.dealership_id) {
-      return new Response(JSON.stringify({ error: "No dealership found for user" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const dealershipId = profile.dealership_id;
-
-    // ── Get scraper URL and optional pre-fetched HTML ────
-    const body = await req.json().catch(() => ({}));
-    let scrapeUrl: string = body.url || "";
-    const prefetchedHtml: string | null = body.html || null;
-
-    if (!scrapeUrl) {
-      const { data: settings } = await supabase
-        .from("dealer_settings")
-        .select("scraper_url")
-        .eq("dealership_id", dealershipId)
-        .maybeSingle();
-      scrapeUrl = settings?.scraper_url || "";
-    }
-
-    if (!scrapeUrl) {
-      return new Response(JSON.stringify({ error: "No scraper URL configured" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Validate URL
-    try {
-      const parsed = new URL(scrapeUrl);
-      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("bad protocol");
-    } catch {
-      return new Response(JSON.stringify({ error: "Invalid URL" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Update status → scraping
-    await supabase
-      .from("dealer_settings")
-      .update({ scraper_status: "scraping", scraper_url: scrapeUrl })
-      .eq("dealership_id", dealershipId);
-
-    // ── Fetch the webpage (or use pre-fetched HTML) ───────
-    let html: string;
-
-    if (prefetchedHtml && prefetchedHtml.length > 500) {
-      // Client already fetched the HTML (e.g. site blocks server IPs)
-      html = prefetchedHtml;
-      console.log(`Using pre-fetched HTML (${html.length} chars)`);
-    } else {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-      try {
-        const res = await fetch(scrapeUrl, {
-          signal: controller.signal,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-          },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        html = await res.text();
-      } catch (err: any) {
-        clearTimeout(timeout);
-        await supabase
-          .from("dealer_settings")
-          .update({ scraper_status: "error" })
-          .eq("dealership_id", dealershipId);
-
-        return new Response(JSON.stringify({ error: `Failed to fetch page: ${err.message}` }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      } finally {
-        clearTimeout(timeout);
+  // Pattern 2: "Results X - Y of Z" with known per-page count
+  if (result.totalPages <= 1) {
+    const resultsMatch = html.match(/(\d+)\s*[-–]\s*(\d+)\s+of\s+(\d+)/);
+    if (resultsMatch) {
+      const start = parseInt(resultsMatch[1]);
+      const end = parseInt(resultsMatch[2]);
+      const total = parseInt(resultsMatch[3]);
+      const perPage = end - start + 1;
+      if (perPage > 0 && total > perPage) {
+        result.totalPages = Math.min(Math.ceil(total / perPage), MAX_PAGES);
       }
     }
+  }
 
-    // ── Clean HTML — strip scripts, styles, SVGs ─────────
-    const cleaned = html
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<svg[\s\S]*?<\/svg>/gi, "")
-      .replace(/<nav[\s\S]*?<\/nav>/gi, "")
-      .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-      .replace(/<header[\s\S]*?<\/header>/gi, "")
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/\s{2,}/g, " ")
-      .trim();
-
-    // Truncate to ~120k chars to stay within Gemini token limits
-    const truncated = cleaned.length > 120_000 ? cleaned.slice(0, 120_000) : cleaned;
-
-    // ── Gemini extraction ────────────────────────────────
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      await supabase
-        .from("dealer_settings")
-        .update({ scraper_status: "error" })
-        .eq("dealership_id", dealershipId);
-
-      return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+  // Pattern 3: Pagination links with page numbers in href
+  if (result.totalPages <= 1) {
+    const pageLinks = html.match(/href="[^"]*[?&](page|Page|PageNumber|p|pg|offset|start)=(\d+)[^"]*"/gi);
+    if (pageLinks && pageLinks.length > 0) {
+      let maxPage = 1;
+      for (const link of pageLinks) {
+        const numMatch = link.match(/[?&](?:page|Page|PageNumber|p|pg)=(\d+)/i);
+        if (numMatch) {
+          maxPage = Math.max(maxPage, parseInt(numMatch[1]));
+        }
+      }
+      if (maxPage > 1) {
+        result.totalPages = Math.min(maxPage, MAX_PAGES);
+      }
     }
+  }
 
-    const geminiPrompt = `You are a vehicle inventory extraction engine. Extract every vehicle listing from the following dealer website HTML.
+  // Pattern 4: Numbered pagination buttons (aria-label="Page X" or data-page)
+  if (result.totalPages <= 1) {
+    const ariaPages = html.match(/aria-label="(?:Page|Go to page)\s*(\d+)"/gi);
+    if (ariaPages && ariaPages.length > 0) {
+      let maxPage = 1;
+      for (const ap of ariaPages) {
+        const n = ap.match(/(\d+)/);
+        if (n) maxPage = Math.max(maxPage, parseInt(n[1]));
+      }
+      if (maxPage > 1) result.totalPages = Math.min(maxPage, MAX_PAGES);
+    }
+  }
+
+  // If we found multiple pages, generate the URLs for pages 2..N
+  if (result.totalPages > 1) {
+    for (let p = 2; p <= result.totalPages; p++) {
+      // Try to detect the URL pattern from existing links in the HTML
+      const nextUrl = buildPageUrl(html, baseUrl, p);
+      if (nextUrl) result.nextPageUrls.push(nextUrl);
+    }
+  }
+
+  return result;
+}
+
+function buildPageUrl(html: string, baseUrl: string, pageNum: number): string | null {
+  const parsed = new URL(baseUrl);
+
+  // Strategy 1: Find an existing pagination link and derive the pattern
+  // Look for href containing page=2, Page=2, etc.
+  const pageLinkPatterns = [
+    /href="([^"]*[?&]Page=)\d+/i,
+    /href="([^"]*[?&]page=)\d+/i,
+    /href="([^"]*[?&]PageNumber=)\d+/i,
+    /href="([^"]*[?&]p=)\d+/i,
+    /href="([^"]*[?&]pg=)\d+/i,
+    /href="([^"]*[?&]offset=)\d+/i,
+  ];
+
+  for (const pattern of pageLinkPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      const prefix = match[1];
+      // If it's offset-based, multiply by per-page count
+      if (prefix.toLowerCase().includes("offset=")) {
+        const perPageMatch = html.match(/(\d+)\s*[-–]\s*(\d+)\s+of/);
+        const perPage = perPageMatch ? parseInt(perPageMatch[2]) - parseInt(perPageMatch[1]) + 1 : 24;
+        return prefix + ((pageNum - 1) * perPage);
+      }
+      return prefix + pageNum;
+    }
+  }
+
+  // Strategy 2: Append ?page=N to the base URL (most common pattern)
+  const sep = parsed.search ? "&" : "?";
+  // Check which param name appears in the HTML
+  if (/PageNumber/i.test(html)) {
+    return `${baseUrl}${sep}PageNumber=${pageNum}`;
+  }
+  if (/[?&]Page=/i.test(html)) {
+    return `${baseUrl}${sep}Page=${pageNum}`;
+  }
+
+  // Default to ?page=N
+  return `${baseUrl}${sep}page=${pageNum}`;
+}
+
+async function fetchPage(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: BROWSER_HEADERS });
+    if (!res.ok) return null;
+    const text = await res.text();
+    // Check for captcha/block pages (very small HTML = likely blocked)
+    if (text.length < 2000 && /captcha|datadome|challenge/i.test(text)) return null;
+    return text;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function cleanHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, "")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+    .replace(/<header[\s\S]*?<\/header>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+async function extractVehiclesWithGemini(html: string, scrapeUrl: string, apiKey: string): Promise<any[]> {
+  const truncated = html.length > 120_000 ? html.slice(0, 120_000) : html;
+
+  const geminiPrompt = `You are a vehicle inventory extraction engine. Extract every vehicle listing from the following dealer website HTML.
 
 For each vehicle return a JSON object with these fields (use null if not found):
 - vin (string | null) — 17-character VIN
@@ -186,74 +189,241 @@ Rules:
 - Convert relative image URLs to absolute using the base URL: ${scrapeUrl}
 - If no vehicles are found, return an empty array [].`;
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: geminiPrompt },
-                { text: truncated },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 8192,
-          },
-        }),
-      },
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: geminiPrompt }, { text: truncated }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+      }),
+    },
+  );
+
+  if (!geminiRes.ok) {
+    const errBody = await geminiRes.text();
+    console.error("Gemini error:", errBody);
+    throw new Error("AI extraction failed");
+  }
+
+  const geminiData = await geminiRes.json();
+  let rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  rawText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+  try {
+    const parsed = JSON.parse(rawText);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error("Failed to parse Gemini response:", rawText.slice(0, 500));
+    throw new Error("Failed to parse AI response");
+  }
+}
+
+// ── Main handler ─────────────────────────────────────────
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  try {
+    // ── Auth ──────────────────────────────────────────────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
-      console.error("Gemini error:", errBody);
-      await supabase
-        .from("dealer_settings")
-        .update({ scraper_status: "error" })
-        .eq("dealership_id", dealershipId);
-
-      return new Response(JSON.stringify({ error: "AI extraction failed" }), {
-        status: 502,
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const geminiData = await geminiRes.json();
-    let rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+    const userId = userData.user.id;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("dealership_id")
+      .eq("user_id", userId)
+      .single();
 
-    // Strip markdown code fences if present
-    rawText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    if (!profile?.dealership_id) {
+      return new Response(JSON.stringify({ error: "No dealership found for user" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    let vehicles: any[];
+    const dealershipId = profile.dealership_id;
+
+    // ── Parse request body ────────────────────────────────
+    const body = await req.json().catch(() => ({}));
+    let scrapeUrl: string = body.url || "";
+    const prefetchedHtml: string | null = body.html || null;
+    // For multi-page pre-fetched HTML from the client
+    const prefetchedPages: string[] | null = body.htmlPages || null;
+
+    if (!scrapeUrl) {
+      const { data: settings } = await supabase
+        .from("dealer_settings")
+        .select("scraper_url")
+        .eq("dealership_id", dealershipId)
+        .maybeSingle();
+      scrapeUrl = settings?.scraper_url || "";
+    }
+
+    if (!scrapeUrl) {
+      return new Response(JSON.stringify({ error: "No scraper URL configured" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     try {
-      vehicles = JSON.parse(rawText);
-      if (!Array.isArray(vehicles)) vehicles = [];
+      const parsed = new URL(scrapeUrl);
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("bad protocol");
     } catch {
-      console.error("Failed to parse Gemini response:", rawText.slice(0, 500));
-      await supabase
-        .from("dealer_settings")
-        .update({ scraper_status: "error" })
-        .eq("dealership_id", dealershipId);
-
-      return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
-        status: 500,
+      return new Response(JSON.stringify({ error: "Invalid URL" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Cap at MAX_VEHICLES
-    vehicles = vehicles.slice(0, MAX_VEHICLES);
+    await supabase
+      .from("dealer_settings")
+      .update({ scraper_status: "scraping", scraper_url: scrapeUrl })
+      .eq("dealership_id", dealershipId);
+
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      await supabase.from("dealer_settings").update({ scraper_status: "error" }).eq("dealership_id", dealershipId);
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Collect HTML from all pages ───────────────────────
+    let allPages: string[] = [];
+    let pagesScraped = 0;
+
+    if (prefetchedPages && prefetchedPages.length > 0) {
+      // Client sent multiple pre-fetched pages
+      allPages = prefetchedPages.filter((p: string) => p && p.length > 500);
+      pagesScraped = allPages.length;
+      console.log(`Using ${pagesScraped} pre-fetched HTML pages`);
+
+    } else if (prefetchedHtml && prefetchedHtml.length > 500) {
+      // Client sent single pre-fetched page — detect pagination and return info
+      allPages.push(prefetchedHtml);
+      pagesScraped = 1;
+
+      const pagination = detectPagination(prefetchedHtml, scrapeUrl);
+      if (pagination.totalPages > 1 && pagination.nextPageUrls.length > 0) {
+        console.log(`Detected ${pagination.totalPages} pages, returning pagination info for client-side fetch`);
+        // We still process page 1 in case the client doesn't support multi-page
+        // But we also signal that more pages exist
+      }
+      console.log(`Using 1 pre-fetched HTML page`);
+
+    } else {
+      // Server-side fetch — fetch page 1, detect pagination, fetch remaining
+      const page1 = await fetchPage(scrapeUrl);
+      if (!page1) {
+        await supabase.from("dealer_settings").update({ scraper_status: "error" }).eq("dealership_id", dealershipId);
+        return new Response(JSON.stringify({ error: "Failed to fetch page: site may be blocking server requests" }), {
+          status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      allPages.push(page1);
+      pagesScraped = 1;
+
+      // Detect pagination and fetch remaining pages
+      const pagination = detectPagination(page1, scrapeUrl);
+      if (pagination.totalPages > 1) {
+        console.log(`Detected ${pagination.totalPages} total pages, fetching pages 2-${pagination.totalPages}...`);
+
+        for (const pageUrl of pagination.nextPageUrls) {
+          const pageHtml = await fetchPage(pageUrl);
+          if (pageHtml) {
+            allPages.push(pageHtml);
+            pagesScraped++;
+            console.log(`Fetched page ${pagesScraped}/${pagination.totalPages} (${pageHtml.length} chars)`);
+          } else {
+            console.log(`Failed to fetch ${pageUrl}, stopping pagination`);
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Clean and combine all pages ───────────────────────
+    // Process each page through Gemini separately to avoid token limits,
+    // then combine results. For small page counts, combine HTML first.
+    let allVehicles: any[] = [];
+
+    if (allPages.length <= 3) {
+      // Small number of pages — combine HTML and send once
+      const combinedHtml = allPages.map(p => cleanHtml(p)).join("\n<!-- PAGE BREAK -->\n");
+      console.log(`Combined HTML: ${combinedHtml.length} chars from ${allPages.length} pages`);
+
+      try {
+        allVehicles = await extractVehiclesWithGemini(combinedHtml, scrapeUrl, GEMINI_API_KEY);
+      } catch (err: any) {
+        await supabase.from("dealer_settings").update({ scraper_status: "error" }).eq("dealership_id", dealershipId);
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      // Many pages — process in batches of 2 to stay within token limits
+      const batchSize = 2;
+      for (let i = 0; i < allPages.length; i += batchSize) {
+        const batch = allPages.slice(i, i + batchSize);
+        const batchHtml = batch.map(p => cleanHtml(p)).join("\n<!-- PAGE BREAK -->\n");
+        console.log(`Processing batch ${Math.floor(i / batchSize) + 1}: ${batchHtml.length} chars (pages ${i + 1}-${Math.min(i + batchSize, allPages.length)})`);
+
+        try {
+          const batchVehicles = await extractVehiclesWithGemini(batchHtml, scrapeUrl, GEMINI_API_KEY);
+          allVehicles.push(...batchVehicles);
+        } catch (err: any) {
+          console.error(`Batch extraction failed: ${err.message}`);
+          // Continue with what we have
+        }
+
+        if (allVehicles.length >= MAX_VEHICLES) break;
+      }
+    }
+
+    // Deduplicate vehicles by VIN (in case pagination overlap)
+    const seenVins = new Set<string>();
+    const deduped: any[] = [];
+    for (const v of allVehicles) {
+      const vin = v.vin && typeof v.vin === "string" && v.vin.length === 17 ? v.vin.toUpperCase() : null;
+      if (vin) {
+        if (seenVins.has(vin)) continue;
+        seenVins.add(vin);
+      }
+      deduped.push(v);
+    }
+
+    let vehicles = deduped.slice(0, MAX_VEHICLES);
+    console.log(`Total vehicles after dedup: ${vehicles.length} (from ${allVehicles.length} raw, ${pagesScraped} pages)`);
 
     // ── Upsert vehicles ──────────────────────────────────
     let newCount = 0;
     let updatedCount = 0;
     let markedSold = 0;
-
-    // Track scraped VINs for marking sold
     const scrapedVins = new Set<string>();
 
     for (const v of vehicles) {
@@ -285,7 +455,6 @@ Rules:
       };
 
       if (vin) {
-        // Try to find existing vehicle by VIN
         const { data: existing } = await supabase
           .from("vehicles")
           .select("id")
@@ -294,14 +463,9 @@ Rules:
           .maybeSingle();
 
         if (existing) {
-          // Update existing
-          await supabase
-            .from("vehicles")
-            .update(vehicleData)
-            .eq("id", existing.id);
+          await supabase.from("vehicles").update(vehicleData).eq("id", existing.id);
           updatedCount++;
         } else {
-          // Insert new
           vehicleData.vin = vin;
           vehicleData.status = "available";
           vehicleData.synced_to_facebook = false;
@@ -312,7 +476,6 @@ Rules:
           newCount++;
         }
       } else {
-        // No VIN — try to match by year+make+model+trim
         const { data: existing } = await supabase
           .from("vehicles")
           .select("id")
@@ -323,13 +486,9 @@ Rules:
           .maybeSingle();
 
         if (existing) {
-          await supabase
-            .from("vehicles")
-            .update(vehicleData)
-            .eq("id", existing.id);
+          await supabase.from("vehicles").update(vehicleData).eq("id", existing.id);
           updatedCount++;
         } else {
-          // Generate a placeholder VIN
           vehicleData.vin = `SCRAPE${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`.slice(0, 17);
           vehicleData.status = "available";
           vehicleData.synced_to_facebook = false;
@@ -364,7 +523,7 @@ Rules:
       }
     }
 
-    // ── Update dealer_settings with results ──────────────
+    // ── Update dealer_settings ────────────────────────────
     await supabase
       .from("dealer_settings")
       .update({
@@ -384,10 +543,10 @@ Rules:
       marked_sold: markedSold,
       images_fetched: vehicles.reduce((sum: number, v: any) => sum + (Array.isArray(v.images) ? v.images.length : 0), 0),
       status: "success",
-      message: `Scraped ${scrapeUrl} — ${newCount} new, ${updatedCount} updated, ${markedSold} marked sold`,
+      message: `Scraped ${scrapeUrl} — ${pagesScraped} pages, ${newCount} new, ${updatedCount} updated, ${markedSold} marked sold`,
     });
 
-    console.log(`Scrape complete: ${vehicles.length} found, ${newCount} new, ${updatedCount} updated, ${markedSold} sold`);
+    console.log(`Scrape complete: ${vehicles.length} found (${pagesScraped} pages), ${newCount} new, ${updatedCount} updated, ${markedSold} sold`);
 
     return new Response(
       JSON.stringify({
@@ -396,6 +555,7 @@ Rules:
         new_vehicles: newCount,
         updated_vehicles: updatedCount,
         marked_sold: markedSold,
+        pages_scraped: pagesScraped,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

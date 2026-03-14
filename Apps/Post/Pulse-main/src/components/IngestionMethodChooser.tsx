@@ -110,6 +110,16 @@ export function IngestionMethodChooser() {
     toast.success("Scraper URL saved");
   };
 
+  const handleScrapeSuccess = (result: any) => {
+    setScraperStatus("idle");
+    setScraperLastRun(new Date().toISOString());
+    setScraperVehicleCount(result.vehicles_found || 0);
+    const pages = result.pages_scraped > 1 ? ` · ${result.pages_scraped} pages` : "";
+    toast.success("Scrape complete!", {
+      description: `${result.vehicles_found} found · ${result.new_vehicles} new · ${result.updated_vehicles} updated · ${result.marked_sold} marked sold${pages}`,
+    });
+  };
+
   const runScraper = async () => {
     if (!scraperUrl.trim()) {
       toast.error("Please enter and save a URL first");
@@ -119,36 +129,61 @@ export function IngestionMethodChooser() {
     setScraping(true);
     setScraperStatus("scraping");
     try {
-      // Try server-side fetch first, fall back to client-side if blocked
-      let payload: { url: string; html?: string } = { url: scraperUrl.trim() };
-
+      // Try server-side fetch first (handles pagination automatically)
       const { data, error } = await supabase.functions.invoke("scrape-inventory", {
-        body: payload,
+        body: { url: scraperUrl.trim() },
       });
 
       // If server got blocked (502 = fetch failed), try client-side fetch
       if (data?.error?.includes?.("Failed to fetch page") || error?.message?.includes?.("502")) {
         toast.info("Server fetch blocked — trying client-side fetch...");
         try {
-          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(scraperUrl.trim())}`;
-          const pageRes = await fetch(proxyUrl);
-          if (!pageRes.ok) throw new Error(`Proxy fetch failed: ${pageRes.status}`);
-          const html = await pageRes.text();
-          if (html.length < 500) throw new Error("Page content too small");
+          // Fetch page 1 via proxy
+          const proxyBase = "https://api.allorigins.win/raw?url=";
+          const page1Res = await fetch(proxyBase + encodeURIComponent(scraperUrl.trim()));
+          if (!page1Res.ok) throw new Error(`Proxy fetch failed: ${page1Res.status}`);
+          const page1Html = await page1Res.text();
+          if (page1Html.length < 500) throw new Error("Page content too small — site may require JavaScript");
+
+          // Detect pagination in page 1 HTML
+          const pageMatch = page1Html.match(/Page\s+(\d+)\s+of\s+(\d+)/i);
+          const allPages: string[] = [page1Html];
+
+          if (pageMatch) {
+            const totalPages = Math.min(parseInt(pageMatch[2]), 10);
+            if (totalPages > 1) {
+              toast.info(`Found ${totalPages} pages — fetching all...`);
+              // Build page URLs and fetch remaining pages
+              for (let p = 2; p <= totalPages; p++) {
+                try {
+                  const sep = scraperUrl.includes("?") ? "&" : "?";
+                  const pageUrl = `${scraperUrl.trim()}${sep}page=${p}`;
+                  const res = await fetch(proxyBase + encodeURIComponent(pageUrl));
+                  if (res.ok) {
+                    const html = await res.text();
+                    if (html.length > 500) allPages.push(html);
+                  }
+                } catch {
+                  // Stop on failure
+                  break;
+                }
+              }
+            }
+          }
+
+          // Send all pages to edge function
+          const bodyPayload = allPages.length > 1
+            ? { url: scraperUrl.trim(), htmlPages: allPages }
+            : { url: scraperUrl.trim(), html: page1Html };
 
           const { data: retryData, error: retryError } = await supabase.functions.invoke("scrape-inventory", {
-            body: { url: scraperUrl.trim(), html },
+            body: bodyPayload,
           });
 
           if (retryError) throw new Error(retryError.message);
           if (retryData?.error) throw new Error(retryData.error);
 
-          setScraperStatus("idle");
-          setScraperLastRun(new Date().toISOString());
-          setScraperVehicleCount(retryData.vehicles_found || 0);
-          toast.success("Scrape complete!", {
-            description: `${retryData.vehicles_found} found · ${retryData.new_vehicles} new · ${retryData.updated_vehicles} updated · ${retryData.marked_sold} marked sold`,
-          });
+          handleScrapeSuccess(retryData);
           return;
         } catch (clientErr: any) {
           toast.error("Scrape failed", { description: clientErr.message });
@@ -169,12 +204,7 @@ export function IngestionMethodChooser() {
         return;
       }
 
-      setScraperStatus("idle");
-      setScraperLastRun(new Date().toISOString());
-      setScraperVehicleCount(data.vehicles_found || 0);
-      toast.success("Scrape complete!", {
-        description: `${data.vehicles_found} found · ${data.new_vehicles} new · ${data.updated_vehicles} updated · ${data.marked_sold} marked sold`,
-      });
+      handleScrapeSuccess(data);
     } catch (err: any) {
       toast.error("Scrape failed", { description: err.message });
       setScraperStatus("error");
@@ -250,7 +280,7 @@ export function IngestionMethodChooser() {
               <h3 className="text-sm font-bold text-foreground">Website Scraper Configuration</h3>
             </div>
             <p className="text-xs text-muted-foreground">
-              Enter the URL of your dealership's inventory page. Our AI will extract vehicle data including year, make, model, price, mileage, and photos.
+              Enter the URL of your dealership's inventory page. Our AI will extract vehicle data including year, make, model, price, mileage, and photos. If the inventory spans multiple pages, all pages are scraped automatically.
             </p>
 
             <div className="space-y-1.5">
