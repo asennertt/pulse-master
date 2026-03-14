@@ -65,13 +65,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: role } = await supabaseAdmin
+    const { data: roles } = await supabaseAdmin
       .from("user_roles")
       .select("role")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
 
-    if (!role || !["super_admin", "dealer_admin"].includes(role.role)) {
+    const userRoles = (roles || []).map((r: any) => r.role);
+    if (!userRoles.includes("super_admin") && !userRoles.includes("dealer_admin")) {
       return new Response(JSON.stringify({ error: "Only admins can disconnect sources" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
