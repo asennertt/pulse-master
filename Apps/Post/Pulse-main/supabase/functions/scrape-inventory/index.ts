@@ -81,7 +81,6 @@ function detectPagination(html: string, baseUrl: string): PaginationInfo {
   // If we found multiple pages, generate the URLs for pages 2..N
   if (result.totalPages > 1) {
     for (let p = 2; p <= result.totalPages; p++) {
-      // Try to detect the URL pattern from existing links in the HTML
       const nextUrl = buildPageUrl(html, baseUrl, p);
       if (nextUrl) result.nextPageUrls.push(nextUrl);
     }
@@ -94,7 +93,6 @@ function buildPageUrl(html: string, baseUrl: string, pageNum: number): string | 
   const parsed = new URL(baseUrl);
 
   // Strategy 1: Find an existing pagination link and derive the pattern
-  // Look for href containing page=2, Page=2, etc.
   const pageLinkPatterns = [
     /href="([^"]*[?&]Page=)\d+/i,
     /href="([^"]*[?&]page=)\d+/i,
@@ -108,7 +106,6 @@ function buildPageUrl(html: string, baseUrl: string, pageNum: number): string | 
     const match = html.match(pattern);
     if (match) {
       const prefix = match[1];
-      // If it's offset-based, multiply by per-page count
       if (prefix.toLowerCase().includes("offset=")) {
         const perPageMatch = html.match(/(\d+)\s*[-–]\s*(\d+)\s+of/);
         const perPage = perPageMatch ? parseInt(perPageMatch[2]) - parseInt(perPageMatch[1]) + 1 : 24;
@@ -118,17 +115,14 @@ function buildPageUrl(html: string, baseUrl: string, pageNum: number): string | 
     }
   }
 
-  // Strategy 2: Append ?page=N to the base URL (most common pattern)
+  // Strategy 2: Append ?page=N to the base URL
   const sep = parsed.search ? "&" : "?";
-  // Check which param name appears in the HTML
   if (/PageNumber/i.test(html)) {
     return `${baseUrl}${sep}PageNumber=${pageNum}`;
   }
   if (/[?&]Page=/i.test(html)) {
     return `${baseUrl}${sep}Page=${pageNum}`;
   }
-
-  // Default to ?page=N
   return `${baseUrl}${sep}page=${pageNum}`;
 }
 
@@ -139,7 +133,6 @@ async function fetchPage(url: string): Promise<string | null> {
     const res = await fetch(url, { signal: controller.signal, headers: BROWSER_HEADERS });
     if (!res.ok) return null;
     const text = await res.text();
-    // Check for captcha/block pages (very small HTML = likely blocked)
     if (text.length < 2000 && /captcha|datadome|challenge/i.test(text)) return null;
     return text;
   } catch {
@@ -150,16 +143,27 @@ async function fetchPage(url: string): Promise<string | null> {
 }
 
 function cleanHtml(html: string): string {
-  return html
+  let cleaned = html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<svg[\s\S]*?<\/svg>/gi, "")
     .replace(/<nav[\s\S]*?<\/nav>/gi, "")
     .replace(/<footer[\s\S]*?<\/footer>/gi, "")
     .replace(/<header[\s\S]*?<\/header>/gi, "")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
+    // Strip small forms (contact, lead, trade-in — NOT inventory forms)
+    .replace(/<form(?![\s\S]{5000})[\s\S]*?<\/form>/gi, (match) => match.length < 5000 ? "" : match)
+    // Strip unnecessary HTML attributes (keep href, src, alt)
+    .replace(/\s+(?:class|id|style|data-[a-z-]+|aria-[a-z-]+|role|tabindex|onclick|onload|onerror|itemprop|itemscope|itemtype)="[^"]*"/gi, "")
+    // Remove form controls inside inventory forms
+    .replace(/<(?:input|select|textarea|button|option|optgroup|fieldset|legend|label)[^>]*(?:\/>|>[\s\S]*?<\/(?:select|textarea|button|option|optgroup|fieldset|legend|label)>)/gi, "")
+    // Remove empty tags
+    .replace(/<(div|span|p|li|ul|ol|section|article|aside|main)\s*>\s*<\/\1>/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+
+  return cleaned;
 }
 
 async function extractVehiclesWithGemini(html: string, scrapeUrl: string, apiKey: string): Promise<any[]> {
@@ -270,7 +274,6 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     let scrapeUrl: string = body.url || "";
     const prefetchedHtml: string | null = body.html || null;
-    // For multi-page pre-fetched HTML from the client
     const prefetchedPages: string[] | null = body.htmlPages || null;
 
     if (!scrapeUrl) {
@@ -317,21 +320,17 @@ Deno.serve(async (req) => {
     let pagesScraped = 0;
 
     if (prefetchedPages && prefetchedPages.length > 0) {
-      // Client sent multiple pre-fetched pages
       allPages = prefetchedPages.filter((p: string) => p && p.length > 500);
       pagesScraped = allPages.length;
       console.log(`Using ${pagesScraped} pre-fetched HTML pages`);
 
     } else if (prefetchedHtml && prefetchedHtml.length > 500) {
-      // Client sent single pre-fetched page — detect pagination and return info
       allPages.push(prefetchedHtml);
       pagesScraped = 1;
 
       const pagination = detectPagination(prefetchedHtml, scrapeUrl);
       if (pagination.totalPages > 1 && pagination.nextPageUrls.length > 0) {
-        console.log(`Detected ${pagination.totalPages} pages, returning pagination info for client-side fetch`);
-        // We still process page 1 in case the client doesn't support multi-page
-        // But we also signal that more pages exist
+        console.log(`Detected ${pagination.totalPages} pages from pre-fetched HTML`);
       }
       console.log(`Using 1 pre-fetched HTML page`);
 
@@ -348,7 +347,6 @@ Deno.serve(async (req) => {
       allPages.push(page1);
       pagesScraped = 1;
 
-      // Detect pagination and fetch remaining pages
       const pagination = detectPagination(page1, scrapeUrl);
       if (pagination.totalPages > 1) {
         console.log(`Detected ${pagination.totalPages} total pages, fetching pages 2-${pagination.totalPages}...`);
@@ -367,45 +365,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Clean and combine all pages ───────────────────────
-    // Process each page through Gemini separately to avoid token limits,
-    // then combine results. For small page counts, combine HTML first.
+    // ── Clean and extract from each page ──────────────────
     let allVehicles: any[] = [];
 
-    if (allPages.length <= 3) {
-      // Small number of pages — combine HTML and send once
-      const combinedHtml = allPages.map(p => cleanHtml(p)).join("\n<!-- PAGE BREAK -->\n");
-      console.log(`Combined HTML: ${combinedHtml.length} chars from ${allPages.length} pages`);
+    for (let i = 0; i < allPages.length; i++) {
+      const pageHtml = cleanHtml(allPages[i]);
+      console.log(`Processing page ${i + 1}/${allPages.length}: ${pageHtml.length} chars`);
 
       try {
-        allVehicles = await extractVehiclesWithGemini(combinedHtml, scrapeUrl, GEMINI_API_KEY);
+        const pageVehicles = await extractVehiclesWithGemini(pageHtml, scrapeUrl, GEMINI_API_KEY);
+        allVehicles.push(...pageVehicles);
+        console.log(`Page ${i + 1}: extracted ${pageVehicles.length} vehicles (total: ${allVehicles.length})`);
       } catch (err: any) {
-        await supabase.from("dealer_settings").update({ scraper_status: "error" }).eq("dealership_id", dealershipId);
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    } else {
-      // Many pages — process in batches of 2 to stay within token limits
-      const batchSize = 2;
-      for (let i = 0; i < allPages.length; i += batchSize) {
-        const batch = allPages.slice(i, i + batchSize);
-        const batchHtml = batch.map(p => cleanHtml(p)).join("\n<!-- PAGE BREAK -->\n");
-        console.log(`Processing batch ${Math.floor(i / batchSize) + 1}: ${batchHtml.length} chars (pages ${i + 1}-${Math.min(i + batchSize, allPages.length)})`);
-
-        try {
-          const batchVehicles = await extractVehiclesWithGemini(batchHtml, scrapeUrl, GEMINI_API_KEY);
-          allVehicles.push(...batchVehicles);
-        } catch (err: any) {
-          console.error(`Batch extraction failed: ${err.message}`);
-          // Continue with what we have
+        console.error(`Page ${i + 1} extraction failed: ${err.message}`);
+        if (i === 0) {
+          await supabase.from("dealer_settings").update({ scraper_status: "error" }).eq("dealership_id", dealershipId);
+          return new Response(JSON.stringify({ error: err.message }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
-
-        if (allVehicles.length >= MAX_VEHICLES) break;
       }
+
+      if (allVehicles.length >= MAX_VEHICLES) break;
     }
 
-    // Deduplicate vehicles by VIN (in case pagination overlap)
+    // Deduplicate vehicles by VIN
     const seenVins = new Set<string>();
     const deduped: any[] = [];
     for (const v of allVehicles) {
