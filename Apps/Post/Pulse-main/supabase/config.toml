@@ -59,3 +59,12 @@ verify_jwt = false
 
 [functions.admin-billing]
 verify_jwt = false
+
+[functions.scrape-inventory]
+verify_jwt = false
+
+[functions.analyze-images]
+verify_jwt = false
+
+[functions.admin-cancel-subscription]
+verify_jwt = false
