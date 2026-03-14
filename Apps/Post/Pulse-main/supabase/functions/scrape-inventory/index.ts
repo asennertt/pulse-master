@@ -257,15 +257,17 @@ async function upsertVehicles(
       source: "scraper",
       source_url: v.detail_url || scrapeUrl,
       dealer_id: dealershipId,
+      dealership_id: dealershipId,
       updated_at: new Date().toISOString(),
     };
 
     if (vin) {
+      // Check both dealer_id and dealership_id (vehicles may have been created with either)
       const { data: existing } = await supabase
         .from("vehicles")
         .select("id")
         .eq("vin", vin)
-        .eq("dealer_id", dealershipId)
+        .or(`dealer_id.eq.${dealershipId},dealership_id.eq.${dealershipId}`)
         .maybeSingle();
 
       if (existing) {
@@ -282,13 +284,14 @@ async function upsertVehicles(
         newCount++;
       }
     } else {
+      // Check both dealer_id and dealership_id for year/make/model match
       const { data: existing } = await supabase
         .from("vehicles")
         .select("id")
         .eq("year", year)
         .eq("make", vehicleData.make as string)
         .eq("model", vehicleData.model as string)
-        .eq("dealer_id", dealershipId)
+        .or(`dealer_id.eq.${dealershipId},dealership_id.eq.${dealershipId}`)
         .maybeSingle();
 
       if (existing) {
@@ -312,7 +315,7 @@ async function upsertVehicles(
     const { data: existingVehicles } = await supabase
       .from("vehicles")
       .select("id, vin")
-      .eq("dealer_id", dealershipId)
+      .or(`dealer_id.eq.${dealershipId},dealership_id.eq.${dealershipId}`)
       .eq("source", "scraper")
       .eq("status", "available");
 

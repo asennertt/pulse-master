@@ -90,6 +90,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Helper: build query that matches vehicles for this dealership
+    // (vehicles use either dealer_id or dealership_id depending on how they were created)
+    const buildDealerQuery = (q: any) => {
+      return q.or(`dealer_id.eq.${dealershipId},dealership_id.eq.${dealershipId}`);
+    };
+
+    // Helper: build query matching source (null source matches any source filter for "csv")
+    const buildSourceQuery = (q: any, src: string) => {
+      if (src === "csv") {
+        // CSV vehicles may have source="csv" OR source=null (legacy imports)
+        return q.or('source.eq.csv,source.is.null');
+      }
+      return q.eq("source", src);
+    };
+
     // ══════════════════════════════════════════════════════
     // ACTION: fix-status — bulk update status for vehicles from a source
     // ══════════════════════════════════════════════════════
@@ -97,12 +112,10 @@ Deno.serve(async (req) => {
       const fromStatus = body.fromStatus || "sold";
       const toStatus = body.toStatus || "available";
 
-      const { data: vehicles, error: fetchErr } = await supabaseAdmin
-        .from("vehicles")
-        .select("id")
-        .eq("dealer_id", dealershipId)
-        .eq("source", source)
-        .eq("status", fromStatus);
+      let q = supabaseAdmin.from("vehicles").select("id").eq("status", fromStatus);
+      q = buildDealerQuery(q);
+      q = buildSourceQuery(q, source);
+      const { data: vehicles, error: fetchErr } = await q;
 
       if (fetchErr) throw fetchErr;
 
@@ -130,18 +143,33 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════════════════
 
     // Count vehicles before deleting
-    const { count } = await supabaseAdmin
-      .from("vehicles")
-      .select("id", { count: "exact", head: true })
-      .eq("dealer_id", dealershipId)
-      .eq("source", source);
+    let countQ = supabaseAdmin.from("vehicles").select("id", { count: "exact", head: true });
+    countQ = buildDealerQuery(countQ);
+    countQ = buildSourceQuery(countQ, source);
+    const { count } = await countQ;
 
     // Delete all vehicles from this source
-    const { error: deleteErr } = await supabaseAdmin
-      .from("vehicles")
-      .delete()
-      .eq("dealer_id", dealershipId)
-      .eq("source", source);
+    // Need to fetch IDs first then delete by ID (Supabase doesn't support .or() with .delete() well)
+    let fetchQ = supabaseAdmin.from("vehicles").select("id");
+    fetchQ = buildDealerQuery(fetchQ);
+    fetchQ = buildSourceQuery(fetchQ, source);
+    const { data: vehiclesToDelete } = await fetchQ;
+
+    let deleteCount = 0;
+    if (vehiclesToDelete && vehiclesToDelete.length > 0) {
+      const ids = vehiclesToDelete.map((v: any) => v.id);
+      // Delete in batches of 100
+      for (let i = 0; i < ids.length; i += 100) {
+        const batch = ids.slice(i, i + 100);
+        const { error: batchErr } = await supabaseAdmin
+          .from("vehicles")
+          .delete()
+          .in("id", batch);
+        if (!batchErr) deleteCount += batch.length;
+      }
+    }
+
+    const deleteErr = deleteCount === 0 && (count || 0) > 0 ? new Error("Delete failed") : null;
 
     if (deleteErr) {
       console.error("Delete error:", deleteErr);
@@ -180,17 +208,17 @@ Deno.serve(async (req) => {
         new_vehicles: 0,
         marked_sold: 0,
         status: "success",
-        message: `Disconnected ${source} — deleted ${count || 0} vehicles`,
+        message: `Disconnected ${source} — deleted ${deleteCount} vehicles`,
       });
     } catch (_e) { /* non-critical */ }
 
-    console.log(`Disconnected source="${source}" for dealer ${dealershipId}: deleted ${count || 0} vehicles`);
+    console.log(`Disconnected source="${source}" for dealer ${dealershipId}: deleted ${deleteCount} vehicles`);
 
     return new Response(JSON.stringify({
       success: true,
       action: "disconnect",
       source,
-      deleted_count: count || 0,
+      deleted_count: deleteCount,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {

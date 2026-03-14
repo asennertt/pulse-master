@@ -267,12 +267,27 @@ export function IngestionMethodChooser() {
   const loadSourceCounts = async () => {
     const counts: Record<string, number> = { scraper: 0, csv: 0, dms: 0 };
     for (const src of ["scraper", "csv", "dms"] as const) {
-      const { count } = await supabase
-        .from("vehicles")
-        .select("id", { count: "exact", head: true })
-        .eq("dealer_id", activeDealerId)
-        .eq("source", src);
-      counts[src] = count || 0;
+      if (src === "csv") {
+        // CSV vehicles may have source="csv" or source=null (legacy imports)
+        const { count: csvCount } = await supabase
+          .from("vehicles")
+          .select("id", { count: "exact", head: true })
+          .or(`dealer_id.eq.${activeDealerId},dealership_id.eq.${activeDealerId}`)
+          .eq("source", "csv");
+        const { count: nullCount } = await supabase
+          .from("vehicles")
+          .select("id", { count: "exact", head: true })
+          .or(`dealer_id.eq.${activeDealerId},dealership_id.eq.${activeDealerId}`)
+          .is("source", null);
+        counts[src] = (csvCount || 0) + (nullCount || 0);
+      } else {
+        const { count } = await supabase
+          .from("vehicles")
+          .select("id", { count: "exact", head: true })
+          .or(`dealer_id.eq.${activeDealerId},dealership_id.eq.${activeDealerId}`)
+          .eq("source", src);
+        counts[src] = count || 0;
+      }
     }
     setSourceVehicleCounts(counts);
   };
@@ -374,7 +389,15 @@ export function IngestionMethodChooser() {
       let pagesScraped = 0;
       let useClientFallback = false;
 
-      if (serverData?.error?.includes?.("Failed to fetch page") || serverError?.message?.includes?.("502")) {
+      // Detect server-side blocking — trigger client-side fallback
+      const serverErrorMsg = serverData?.error || serverError?.message || "";
+      const needsClientFallback = serverErrorMsg.includes("Failed to fetch page")
+        || serverErrorMsg.includes("502")
+        || serverErrorMsg.includes("non-2xx")
+        || serverErrorMsg.includes("blocking")
+        || (serverError && !serverData?.vehicles_raw);
+
+      if (needsClientFallback) {
         useClientFallback = true;
         setProgress({ phase: "inventory", percent: 5, message: "Scanning inventory pages...", detail: "Server blocked — using your browser to fetch pages..." });
 
