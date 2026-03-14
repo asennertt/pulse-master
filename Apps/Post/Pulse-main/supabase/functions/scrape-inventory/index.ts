@@ -103,8 +103,9 @@ Deno.serve(async (req) => {
       const res = await fetch(scrapeUrl, {
         signal: controller.signal,
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; PulsePost/1.0; +https://pulsepost.io)",
-          Accept: "text/html",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
         },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -161,7 +162,7 @@ For each vehicle return a JSON object with these fields (use null if not found):
 - make (string)
 - model (string)
 - trim (string | null)
-- price (number | null) — numeric, no currency symbols
+- price (number | null) — numeric, no currency symbols. Look for the selling price, sale price, internet price, or asking price. Do NOT use MSRP or retail price.
 - mileage (number | null)
 - exterior_color (string | null)
 - images (string[]) — array of image URLs found for this vehicle (full URLs, not relative)
