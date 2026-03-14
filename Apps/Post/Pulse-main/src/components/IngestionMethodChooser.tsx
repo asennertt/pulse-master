@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Database, Globe, FileText, Loader2, CheckCircle2, Play, Clock, AlertTriangle, ImageIcon } from "lucide-react";
+import { Database, Globe, FileText, Loader2, CheckCircle2, Play, Clock, AlertTriangle, ImageIcon, Trash2, Unplug } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/Contexts/AuthContext";
 import { toast } from "sonner";
@@ -29,6 +29,56 @@ const METHOD_OPTIONS: { key: IngestionMethod; label: string; description: string
     icon: FileText,
   },
 ];
+
+// ── VIN extraction helper ─────────────────────────────────
+function extractVinFromDetailHtml(html: string): string | null {
+  // Pattern 1: CarsForSale-style "js-vin-message" class
+  const jsVinMatch = html.match(/js-vin-message[^>]*>\s*([A-HJ-NPR-Z0-9]{17})\s*</i);
+  if (jsVinMatch) return jsVinMatch[1].toUpperCase();
+
+  // Pattern 2: Label "VIN" followed by a 17-char value nearby
+  const vinLabelMatch = html.match(/VIN\s*(?:<[^>]*>\s*)*\s*(?:#?:?\s*)(?:<[^>]*>\s*)*([A-HJ-NPR-Z0-9]{17})/i);
+  if (vinLabelMatch) return vinLabelMatch[1].toUpperCase();
+
+  // Pattern 3: data-vin attribute
+  const dataVinMatch = html.match(/data-vin=["']([A-HJ-NPR-Z0-9]{17})["']/i);
+  if (dataVinMatch) return dataVinMatch[1].toUpperCase();
+
+  // Pattern 4: JSON-LD structured data with VIN
+  const jsonLdMatch = html.match(/"vin"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"/i);
+  if (jsonLdMatch) return jsonLdMatch[1].toUpperCase();
+
+  // Pattern 5: Meta tag with VIN
+  const metaVinMatch = html.match(/meta[^>]+(?:name|property)=["'][^"]*vin[^"]*["'][^>]+content=["']([A-HJ-NPR-Z0-9]{17})["']/i);
+  if (metaVinMatch) return metaVinMatch[1].toUpperCase();
+
+  // Pattern 6: Standalone 17-char VIN pattern near a "VIN" label (broader search)
+  const vinSection = html.match(/VIN[^]*?([A-HJ-NPR-Z0-9]{17})/i);
+  if (vinSection) {
+    // Verify it looks like a real VIN (not a hash or random string)
+    const candidate = vinSection[1].toUpperCase();
+    // Real VINs have a mix of letters and numbers
+    if (/[A-Z]/.test(candidate) && /[0-9]/.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Pattern 7: Any standalone 17-char VIN-like string in the page
+  const allVins = html.match(/\b[A-HJ-NPR-Z0-9]{17}\b/g);
+  if (allVins) {
+    for (const v of allVins) {
+      const upper = v.toUpperCase();
+      // Filter out things that are clearly not VINs
+      if (/^[0-9]+$/.test(upper)) continue; // All numbers
+      if (/^[A-Z]+$/.test(upper)) continue; // All letters
+      if (/[A-Z]/.test(upper) && /[0-9]/.test(upper)) {
+        return upper;
+      }
+    }
+  }
+
+  return null;
+}
 
 // ── Image extraction helpers ─────────────────────────────
 function extractImagesFromDetailHtml(html: string, baseUrl: string): string[] {
@@ -185,8 +235,16 @@ export function IngestionMethodChooser() {
   const [progress, setProgress] = useState<ScrapeProgress>({ phase: "idle", percent: 0, message: "" });
   const abortRef = useRef(false);
 
+  // Disconnect state
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState<IngestionMethod | null>(null);
+  const [sourceVehicleCounts, setSourceVehicleCounts] = useState<Record<string, number>>({ scraper: 0, csv: 0, dms: 0 });
+
   useEffect(() => {
-    if (activeDealerId) loadSettings();
+    if (activeDealerId) {
+      loadSettings();
+      loadSourceCounts();
+    }
   }, [activeDealerId]);
 
   const loadSettings = async () => {
@@ -204,6 +262,56 @@ export function IngestionMethodChooser() {
       setScraperVehicleCount(data.scraper_vehicle_count || 0);
     }
     setLoading(false);
+  };
+
+  const loadSourceCounts = async () => {
+    const counts: Record<string, number> = { scraper: 0, csv: 0, dms: 0 };
+    for (const src of ["scraper", "csv", "dms"] as const) {
+      const { count } = await supabase
+        .from("vehicles")
+        .select("id", { count: "exact", head: true })
+        .eq("dealer_id", activeDealerId)
+        .eq("source", src);
+      counts[src] = count || 0;
+    }
+    setSourceVehicleCounts(counts);
+  };
+
+  const disconnectSource = async (source: IngestionMethod) => {
+    const sourceKey = source === "scraper" ? "scraper" : source;
+    setDisconnecting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase.functions.invoke("disconnect-source", {
+        body: { source: sourceKey },
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      const deleted = data?.deleted_count || 0;
+      toast.success(`Disconnected ${source === "dms" ? "DMS / SFTP" : source === "scraper" ? "Website Scraper" : "CSV"}`, {
+        description: `${deleted} vehicle${deleted !== 1 ? "s" : ""} removed`,
+      });
+
+      // Reset local state
+      if (source === "scraper") {
+        setScraperUrl("");
+        setScraperStatus("idle");
+        setScraperLastRun(null);
+        setScraperVehicleCount(0);
+        setProgress({ phase: "idle", percent: 0, message: "" });
+      }
+
+      setShowDisconnectConfirm(null);
+      loadSourceCounts();
+    } catch (err: any) {
+      toast.error("Disconnect failed", { description: err.message });
+    } finally {
+      setDisconnecting(false);
+    }
   };
 
   const selectMethod = async (m: IngestionMethod) => {
@@ -357,6 +465,7 @@ export function IngestionMethodChooser() {
 
       let processedCount = 0;
       let imagesFound = 0;
+      let vinsFound = 0;
       const BATCH_SIZE = 3; // Fetch 3 detail pages at a time to avoid overwhelming
 
       for (let batch = 0; batch < detailUrls.length; batch += BATCH_SIZE) {
@@ -368,28 +477,40 @@ export function IngestionMethodChooser() {
             // Try proxy first for sites with bot protection, then direct
             let html = await fetchDetailPage(item.url, true);
             if (!html) html = await fetchDetailPage(item.url, false);
+            let imgCount = 0;
+            let foundVin = false;
             if (html) {
+              // Extract images
               const imgs = extractImagesFromDetailHtml(html, item.url);
               if (imgs.length > 0) {
                 vehiclesFromEdge[item.index].images = imgs;
-                return imgs.length;
+                imgCount = imgs.length;
+              }
+              // Extract real VIN from detail page
+              const vin = extractVinFromDetailHtml(html);
+              if (vin) {
+                vehiclesFromEdge[item.index].vin = vin;
+                foundVin = true;
               }
             }
-            return 0;
+            return { imgCount, foundVin };
           })
         );
 
         for (const result of batchResults) {
           processedCount++;
-          if (result.status === "fulfilled") imagesFound += result.value;
+          if (result.status === "fulfilled") {
+            imagesFound += result.value.imgCount;
+            if (result.value.foundVin) vinsFound++;
+          }
         }
 
         const pct = 22 + (processedCount / detailUrls.length) * 63;
         setProgress({
           phase: "images",
           percent: Math.min(pct, 85),
-          message: "Fetching vehicle photos...",
-          detail: `${processedCount} of ${detailUrls.length} vehicles · ${imagesFound} photos found`,
+          message: "Fetching vehicle details & photos...",
+          detail: `${processedCount} of ${detailUrls.length} vehicles · ${imagesFound} photos · ${vinsFound} VINs found`,
         });
 
         // Small delay between batches to be polite to the server
@@ -398,7 +519,7 @@ export function IngestionMethodChooser() {
         }
       }
 
-      setProgress({ phase: "images", percent: 85, message: "Photos collected!", detail: `${imagesFound} total photos across ${processedCount} vehicles` });
+      setProgress({ phase: "images", percent: 85, message: "Details collected!", detail: `${imagesFound} photos · ${vinsFound} VINs across ${processedCount} vehicles` });
 
       // ═══════════════════════════════════════════════════
       // PHASE 3: Save enriched vehicles to database (85-100%)
@@ -564,12 +685,91 @@ export function IngestionMethodChooser() {
                 <><Play className="h-4 w-4" /> Run Scraper Now</>
               )}
             </button>
+
+            {/* Disconnect button */}
+            {sourceVehicleCounts.scraper > 0 && (
+              <button
+                onClick={() => setShowDisconnectConfirm("scraper")}
+                disabled={scraping || disconnecting}
+                className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-4 py-2.5 text-sm font-medium hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                <Unplug className="h-4 w-4" />
+                Disconnect Scraper ({sourceVehicleCounts.scraper} vehicles)
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {/* DMS + CSV both show the existing DMSIntegrationWizard */}
-      {(method === "dms" || method === "csv") && <DMSIntegrationWizard />}
+      {(method === "dms" || method === "csv") && (
+        <div className="space-y-4">
+          <DMSIntegrationWizard />
+
+          {/* Disconnect button for DMS/CSV */}
+          {sourceVehicleCounts[method] > 0 && (
+            <div className="glass-card rounded-xl p-4">
+              <button
+                onClick={() => setShowDisconnectConfirm(method)}
+                disabled={disconnecting}
+                className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-4 py-2.5 text-sm font-medium hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                <Unplug className="h-4 w-4" />
+                Disconnect {method === "dms" ? "DMS / SFTP" : "CSV"} ({sourceVehicleCounts[method]} vehicles)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Disconnect confirmation dialog ── */}
+      {showDisconnectConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">Disconnect {showDisconnectConfirm === "scraper" ? "Website Scraper" : showDisconnectConfirm === "dms" ? "DMS / SFTP" : "CSV Upload"}?</h3>
+                <p className="text-xs text-muted-foreground">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-3">
+              <p className="text-sm text-foreground">
+                This will permanently delete <span className="font-bold text-destructive">{sourceVehicleCounts[showDisconnectConfirm]} vehicle{sourceVehicleCounts[showDisconnectConfirm] !== 1 ? "s" : ""}</span> imported from this source.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {showDisconnectConfirm === "scraper" && "The scraper URL and all settings will be reset."}
+                {showDisconnectConfirm === "dms" && "DMS connection settings will be cleared."}
+                {showDisconnectConfirm === "csv" && "All CSV-imported vehicles will be removed."}
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowDisconnectConfirm(null)}
+                disabled={disconnecting}
+                className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => disconnectSource(showDisconnectConfirm)}
+                disabled={disconnecting}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-destructive text-destructive-foreground px-4 py-2.5 text-sm font-medium hover:bg-destructive/90 transition-colors disabled:opacity-50"
+              >
+                {disconnecting ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Disconnecting...</>
+                ) : (
+                  <><Trash2 className="h-4 w-4" /> Delete All & Disconnect</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

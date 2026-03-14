@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.admin-cancel-subscription]
 verify_jwt = false
+
+[functions.disconnect-source]
+verify_jwt = false
