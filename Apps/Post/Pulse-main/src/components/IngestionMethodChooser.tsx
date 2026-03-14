@@ -257,9 +257,9 @@ export function IngestionMethodChooser() {
       // ═══════════════════════════════════════════════════
       setProgress({ phase: "inventory", percent: 2, message: "Scanning inventory pages...", detail: "Fetching page 1..." });
 
-      // Try server-side first
+      // Try server-side first (skipDetailFetch so we get raw vehicles back for image enrichment)
       const { data: serverData, error: serverError } = await supabase.functions.invoke("scrape-inventory", {
-        body: { url },
+        body: { url, skipDetailFetch: true },
       });
 
       let vehiclesFromEdge: any[] = [];
