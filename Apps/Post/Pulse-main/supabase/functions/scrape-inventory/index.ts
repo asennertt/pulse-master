@@ -57,9 +57,10 @@ Deno.serve(async (req) => {
 
     const dealershipId = profile.dealership_id;
 
-    // ── Get scraper URL from body or dealer_settings ─────
+    // ── Get scraper URL and optional pre-fetched HTML ────
     const body = await req.json().catch(() => ({}));
     let scrapeUrl: string = body.url || "";
+    const prefetchedHtml: string | null = body.html || null;
 
     if (!scrapeUrl) {
       const { data: settings } = await supabase
@@ -94,35 +95,42 @@ Deno.serve(async (req) => {
       .update({ scraper_status: "scraping", scraper_url: scrapeUrl })
       .eq("dealership_id", dealershipId);
 
-    // ── Fetch the webpage ────────────────────────────────
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+    // ── Fetch the webpage (or use pre-fetched HTML) ───────
     let html: string;
-    try {
-      const res = await fetch(scrapeUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.5",
-        },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      html = await res.text();
-    } catch (err: any) {
-      clearTimeout(timeout);
-      await supabase
-        .from("dealer_settings")
-        .update({ scraper_status: "error" })
-        .eq("dealership_id", dealershipId);
 
-      return new Response(JSON.stringify({ error: `Failed to fetch page: ${err.message}` }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    } finally {
-      clearTimeout(timeout);
+    if (prefetchedHtml && prefetchedHtml.length > 500) {
+      // Client already fetched the HTML (e.g. site blocks server IPs)
+      html = prefetchedHtml;
+      console.log(`Using pre-fetched HTML (${html.length} chars)`);
+    } else {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+      try {
+        const res = await fetch(scrapeUrl, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+          },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        html = await res.text();
+      } catch (err: any) {
+        clearTimeout(timeout);
+        await supabase
+          .from("dealer_settings")
+          .update({ scraper_status: "error" })
+          .eq("dealership_id", dealershipId);
+
+        return new Response(JSON.stringify({ error: `Failed to fetch page: ${err.message}` }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
     }
 
     // ── Clean HTML — strip scripts, styles, SVGs ─────────
@@ -162,7 +170,7 @@ For each vehicle return a JSON object with these fields (use null if not found):
 - make (string)
 - model (string)
 - trim (string | null)
-- price (number | null) — numeric, no currency symbols. Look for the selling price, sale price, internet price, or asking price. Do NOT use MSRP or retail price.
+- price (number | null) — numeric, no currency symbols
 - mileage (number | null)
 - exterior_color (string | null)
 - images (string[]) — array of image URLs found for this vehicle (full URLs, not relative)
@@ -172,6 +180,7 @@ Rules:
 - Return ONLY a JSON array of objects. No markdown, no explanation.
 - Maximum ${MAX_VEHICLES} vehicles.
 - Ignore navigation, footer, and non-vehicle content.
+- For the price field, look for the selling price, sale price, internet price, special price, or asking price. Do NOT use the MSRP or retail price. If multiple prices are shown, prefer the lowest non-MSRP price.
 - If a price has commas or dollar signs, strip them and return a plain number.
 - If VIN is not visible, set it to null.
 - Convert relative image URLs to absolute using the base URL: ${scrapeUrl}

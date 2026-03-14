@@ -119,9 +119,43 @@ export function IngestionMethodChooser() {
     setScraping(true);
     setScraperStatus("scraping");
     try {
+      // Try server-side fetch first, fall back to client-side if blocked
+      let payload: { url: string; html?: string } = { url: scraperUrl.trim() };
+
       const { data, error } = await supabase.functions.invoke("scrape-inventory", {
-        body: { url: scraperUrl.trim() },
+        body: payload,
       });
+
+      // If server got blocked (502 = fetch failed), try client-side fetch
+      if (data?.error?.includes?.("Failed to fetch page") || error?.message?.includes?.("502")) {
+        toast.info("Server fetch blocked — trying client-side fetch...");
+        try {
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(scraperUrl.trim())}`;
+          const pageRes = await fetch(proxyUrl);
+          if (!pageRes.ok) throw new Error(`Proxy fetch failed: ${pageRes.status}`);
+          const html = await pageRes.text();
+          if (html.length < 500) throw new Error("Page content too small");
+
+          const { data: retryData, error: retryError } = await supabase.functions.invoke("scrape-inventory", {
+            body: { url: scraperUrl.trim(), html },
+          });
+
+          if (retryError) throw new Error(retryError.message);
+          if (retryData?.error) throw new Error(retryData.error);
+
+          setScraperStatus("idle");
+          setScraperLastRun(new Date().toISOString());
+          setScraperVehicleCount(retryData.vehicles_found || 0);
+          toast.success("Scrape complete!", {
+            description: `${retryData.vehicles_found} found · ${retryData.new_vehicles} new · ${retryData.updated_vehicles} updated · ${retryData.marked_sold} marked sold`,
+          });
+          return;
+        } catch (clientErr: any) {
+          toast.error("Scrape failed", { description: clientErr.message });
+          setScraperStatus("error");
+          return;
+        }
+      }
 
       if (error) {
         toast.error("Scrape failed", { description: error.message });
