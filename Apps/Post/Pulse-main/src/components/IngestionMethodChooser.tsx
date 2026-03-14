@@ -121,20 +121,41 @@ function extractImagesFromDetailHtml(html: string, baseUrl: string): string[] {
   return images;
 }
 
+// List of CORS proxies to try (in order)
+const CORS_PROXIES = [
+  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
 async function fetchDetailPage(url: string, useProxy: boolean): Promise<string | null> {
-  try {
-    const fetchUrl = useProxy
-      ? `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-      : url;
-    const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(20000) });
-    if (!res.ok) return null;
-    const text = await res.text();
-    // Check for captcha / empty pages
-    if (text.length < 1000 || /captcha|datadome|challenge/i.test(text.slice(0, 500))) return null;
-    return text;
-  } catch {
-    return null;
+  if (!useProxy) {
+    // Direct fetch (will fail with CORS for most cross-origin sites but try anyway)
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      if (!res.ok) return null;
+      const text = await res.text();
+      if (text.length < 1000 || /captcha|datadome|challenge/i.test(text.slice(0, 500))) return null;
+      return text;
+    } catch {
+      return null;
+    }
   }
+
+  // Try each CORS proxy until one works
+  for (const proxyFn of CORS_PROXIES) {
+    try {
+      const proxyUrl = proxyFn(url);
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(20000) });
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (text.length < 1000 || /captcha|datadome|challenge/i.test(text.slice(0, 500))) continue;
+      return text;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 // ── Progress bar component ───────────────────────────────
@@ -410,7 +431,7 @@ export function IngestionMethodChooser() {
         if (!page1Html) page1Html = await fetchDetailPage(url, false);
 
         if (!page1Html || page1Html.length < 500) {
-          throw new Error("Could not fetch inventory page — site may require JavaScript rendering");
+          throw new Error("Could not fetch inventory page — this site has bot protection (DataDome/Cloudflare). Try using a CSV upload instead, or contact support for help.");
         }
 
         const allPages: string[] = [page1Html];
