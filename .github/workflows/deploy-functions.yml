@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'Apps/Post/Pulse-main/supabase/functions/**'
+      - 'Apps/Post/Pulse-main/supabase/config.toml'
       - '.github/workflows/deploy-functions.yml'
 
 jobs:
